@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Shared lesson accents (app cards + widget cards) -->
+    <color name="lesson_accent_cviko">#FF03A9F4</color>
+    <color name="lesson_accent_prednaska">#FFF44336</color>
+    <color name="lesson_accent_lab">#FF4CAF50</color>
+    <color name="lesson_accent_sport">#FFFFEB3B</color>
+    <color name="lesson_accent_default">#FF9CB5B3</color>
+
+    <!-- Widget palette: edit these in one place -->
+    <color name="widget_root_gradient_start">#FF0D2024</color>
+    <color name="widget_root_gradient_end">#FF08171B</color>
+    <color name="widget_root_stroke">#FF2A5766</color>
+
+    <color name="widget_header_gradient_start">#3300A499</color>
+    <color name="widget_header_gradient_end">#1F00A499</color>
+    <color name="widget_header_stroke">#5900A499</color>
+
+    <color name="widget_text_primary">#FFECFAF8</color>
+    <color name="widget_text_secondary">#FFAEE6E1</color>
+    <color name="widget_text_empty">#FFB4D1CD</color>
+
+    <color name="widget_timeline_line">#FF20E666</color>
+    <color name="widget_timeline_track">#FF2D5A66</color>
+    <color name="widget_timeline_dot">#FF7FD6CF</color>
+
+    <color name="widget_item_time">#FFCDEBE7</color>
+    <color name="widget_item_subject">#FFF2FFFD</color>
+    <color name="widget_item_room">#FFD0E8E4</color>
+
+    <!-- Widget card colors aligned with app card alpha (fill 17%, border 42%) -->
+    <color name="widget_card_cviko_fill">#2B03A9F4</color>
+    <color name="widget_card_cviko_stroke">#6B03A9F4</color>
+    <color name="widget_card_prednaska_fill">#2BF44336</color>
+    <color name="widget_card_prednaska_stroke">#6BF44336</color>
+    <color name="widget_card_lab_fill">#2B4CAF50</color>
+    <color name="widget_card_lab_stroke">#6B4CAF50</color>
+    <color name="widget_card_sport_fill">#2BFFEB3B</color>
+    <color name="widget_card_sport_stroke">#6BFFEB3B</color>
+    <color name="widget_card_default_fill">#2B9CB5B3</color>
+    <color name="widget_card_default_stroke">#6B9CB5B3</color>
+</resources>
+
