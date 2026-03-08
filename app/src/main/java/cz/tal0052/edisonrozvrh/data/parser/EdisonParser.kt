@@ -1,4 +1,4 @@
-﻿package cz.tal0052.edisonrozvrh
+﻿package cz.tal0052.edisonrozvrh.data.parser
 
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
@@ -12,6 +12,7 @@ data class ActivitySeed(
     val day: String,
     val time: String,
     val type: String,
+    val weekPattern: String,
     val subject: String,
     val teacher: String,
     val room: String
@@ -31,6 +32,25 @@ data class LessonDetail(
     val type: String
 )
 
+data class CurrentResultItem(
+    val semesterCode: String,
+    val subjectNumber: String,
+    val subjectShortcut: String,
+    val subjectName: String,
+    val creditPoints: String,
+    val examPoints: String,
+    val totalPoints: String,
+    val grade: String,
+    val ectsGrade: String,
+    val detailUrl: String
+)
+
+data class CurrentResultsData(
+    val academicYear: String,
+    val warningNote: String,
+    val items: List<CurrentResultItem>
+)
+
 object EdisonParser {
 
     private data class ParsedRequest(
@@ -42,6 +62,60 @@ object EdisonParser {
     private val idclRegex = Regex("submitForm\\('[^']+','([^']+)'")
     private val timeRegex = Regex("(\\d{1,2}:\\d{2})")
     private val canonicalDays = setOf("Pondeli", "Utery", "Streda", "Ctvrtek", "Patek")
+    private const val WEEK_PATTERN_EVERY = "every"
+    private const val WEEK_PATTERN_EVEN = "even"
+    private const val WEEK_PATTERN_ODD = "odd"
+
+    fun parseCurrentResults(html: String): CurrentResultsData? {
+        val doc = Jsoup.parse(html, "https://edison.sso.vsb.cz")
+        val rows = doc.select("tbody.ui-datatable-data tr[data-ri]")
+        if (rows.isEmpty()) return null
+
+        val items = rows.mapNotNull { row ->
+            val cells = row.select("> td")
+            if (cells.size < 10) return@mapNotNull null
+
+            val subjectName = normalizeWhitespace(
+                cells[3].selectFirst("a")?.text().orEmpty().ifBlank { cells[3].text() }
+            )
+            if (subjectName.isBlank()) return@mapNotNull null
+
+            CurrentResultItem(
+                semesterCode = normalizeWhitespace(cells[0].text()),
+                subjectNumber = normalizeWhitespace(cells[1].text()),
+                subjectShortcut = normalizeWhitespace(cells[2].text()),
+                subjectName = subjectName,
+                creditPoints = parseResultCell(cells[4]),
+                examPoints = parseResultCell(cells[5]),
+                totalPoints = parseResultCell(cells[6]),
+                grade = parseResultCell(cells[7]),
+                ectsGrade = parseResultCell(cells[8]),
+                detailUrl = cells[9]
+                    .selectFirst("a[href]")
+                    ?.absUrl("href")
+                    .orEmpty()
+            )
+        }
+
+        if (items.isEmpty()) return null
+
+        val academicYear = normalizeWhitespace(
+            doc.selectFirst("select[name$='semesterMenu'] option[selected]")?.text().orEmpty()
+        )
+
+        val warningNote = normalizeWhitespace(
+            doc.select("span.outputText")
+                .firstOrNull { it.text().contains("ozna", ignoreCase = true) }
+                ?.text()
+                .orEmpty()
+        )
+
+        return CurrentResultsData(
+            academicYear = academicYear,
+            warningNote = warningNote,
+            items = items
+        )
+    }
 
     fun parseScheduleContext(html: String): ScheduleContext? {
         val doc = Jsoup.parse(html, "https://edison.sso.vsb.cz")
@@ -122,6 +196,7 @@ object EdisonParser {
                     val teacher = parseActivityTeacher(activity)
                     val room = parseActivityRoom(activity)
                     val type = toLessonType(extractActivityTypeCode(activity))
+                    val weekPattern = extractActivityWeekPattern(activity)
 
                     if (subject.isBlank() || slotTime.isBlank()) return@forEach
 
@@ -132,6 +207,7 @@ object EdisonParser {
                             day = currentDay,
                             time = slotTime,
                             type = type,
+                            weekPattern = weekPattern,
                             subject = subject,
                             teacher = teacher,
                             room = room
@@ -185,6 +261,7 @@ object EdisonParser {
                     day = day,
                     time = time,
                     type = "sport",
+                    weekPattern = WEEK_PATTERN_EVERY,
                     subject = subject,
                     teacher = teacher,
                     room = room
@@ -222,6 +299,7 @@ object EdisonParser {
                     day = day,
                     time = time,
                     type = "sport",
+                    weekPattern = WEEK_PATTERN_EVERY,
                     subject = subject,
                     teacher = teacher,
                     room = room
@@ -325,6 +403,26 @@ object EdisonParser {
         return match?.groupValues?.getOrNull(1).orEmpty()
     }
 
+
+    private fun extractActivityWeekPattern(activity: Element): String {
+        val headerCell = activity.select("tr").getOrNull(0)?.selectFirst("td")
+        val emphasized = normalizeWhitespace(
+            headerCell?.select("b, strong")?.text().orEmpty()
+        )
+        val rawText = if (emphasized.isNotBlank()) {
+            emphasized
+        } else {
+            normalizeWhitespace(headerCell?.text().orEmpty())
+        }
+        val token = normalizeToken(rawText)
+
+        return when {
+            token.contains("lich") || token.contains("odd") || token.contains("nepar") -> WEEK_PATTERN_ODD
+            token.contains("sud") || token.contains("even") || Regex("\\bpar\\w*").containsMatchIn(token) -> WEEK_PATTERN_EVEN
+            token.contains("kazd") || token.contains("every") -> WEEK_PATTERN_EVERY
+            else -> WEEK_PATTERN_EVERY
+        }
+    }
     private fun findOwnerForm(element: Element): Element? {
         var current: Element? = element
         while (current != null) {
@@ -399,6 +497,23 @@ object EdisonParser {
             .trim()
     }
 
+    private fun parseResultCell(cell: Element): String {
+        val pointsText = normalizeWhitespace(
+            cell.selectFirst("span.spoints")?.text().orEmpty()
+        )
+        if (pointsText.isNotBlank()) return pointsText
+
+        val directText = normalizeWhitespace(cell.text())
+        if (directText.isNotBlank()) return directText
+
+        val iconSrc = cell.selectFirst("img[src]")?.attr("src").orEmpty().lowercase(Locale.ROOT)
+        return when {
+            iconSrc.contains("selected") -> "OK"
+            iconSrc.contains("dot") -> "..."
+            else -> ""
+        }
+    }
+
     private fun normalizeToken(raw: String): String {
         val withoutDiacritics = Normalizer.normalize(raw, Normalizer.Form.NFD)
             .replace(Regex("\\p{M}+"), "")
@@ -409,6 +524,13 @@ object EdisonParser {
             .trim()
     }
 }
+
+
+
+
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-package cz.tal0052.edisonrozvrh
+package cz.tal0052.edisonrozvrh.map
 
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets

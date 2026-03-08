@@ -1,4 +1,10 @@
-package cz.tal0052.edisonrozvrh
+﻿package cz.tal0052.edisonrozvrh.widget
+
+import cz.tal0052.edisonrozvrh.R
+import cz.tal0052.edisonrozvrh.app.PositionedLesson
+import cz.tal0052.edisonrozvrh.app.buildPositionedLessonsForDay
+import cz.tal0052.edisonrozvrh.app.loadSchedule
+import cz.tal0052.edisonrozvrh.app.normalizeWeekPatternCode
 
 import android.content.Context
 import android.content.Intent
@@ -20,6 +26,7 @@ class ScheduleWidgetService : RemoteViewsService() {
 private data class WidgetLessonItem(
     val positioned: PositionedLesson,
     val roomText: String,
+    val teacherText: String,
     val gapBeforeMinutes: Int,
     val rowStartMinutes: Int
 )
@@ -43,15 +50,18 @@ private class ScheduleWidgetFactory(
                 return
             }
 
-            var previousEnd = minOf(7 * 60, positioned.first().startMinutes)
-            items = positioned.map { item ->
-                val gapBefore = (item.startMinutes - previousEnd).coerceAtLeast(0)
-                val rowStart = item.startMinutes - gapBefore
+            // First lesson starts right under header; limit huge gaps between lessons.
+            var previousEnd = positioned.first().startMinutes
+            items = positioned.mapIndexed { index, item ->
+                val rawGap = (item.startMinutes - previousEnd).coerceAtLeast(0)
+                val gapBefore = if (index == 0) 0 else rawGap.coerceAtMost(45)
+                val rowStart = if (index == 0) item.startMinutes else item.startMinutes - gapBefore
                 previousEnd = max(previousEnd, item.endMinutes)
 
                 WidgetLessonItem(
                     positioned = item,
                     roomText = item.lesson.room.trim(),
+                    teacherText = item.lesson.teacher.trim(),
                     gapBeforeMinutes = gapBefore,
                     rowStartMinutes = rowStart
                 )
@@ -80,15 +90,23 @@ private class ScheduleWidgetFactory(
             val pxPerMinute = context.resources.displayMetrics.density * 0.72f
             val gapPx = (item.gapBeforeMinutes * pxPerMinute).roundToInt().coerceAtLeast(0)
             val durationMinutes = (item.positioned.endMinutes - item.positioned.startMinutes).coerceAtLeast(30)
-            val minBubblePx = dpToPx(context, 58)
+            val minBubblePx = dpToPx(context, 64)
             val durationPx = max((durationMinutes * pxPerMinute).roundToInt(), minBubblePx)
             val rowHeightPx = gapPx + durationPx
 
             views.setViewPadding(R.id.itemContentRow, 0, gapPx, 0, 0)
             views.setInt(R.id.widgetBubble, "setMinimumHeight", durationPx)
 
-            views.setTextViewText(R.id.itemTime, item.positioned.shownTime)
+            views.setTextViewText(R.id.itemTime, formatWidgetTime(item.positioned.shownTime, lesson.weekPattern))
             views.setTextViewText(R.id.itemSubject, lesson.subject)
+
+            if (item.teacherText.isBlank()) {
+                views.setViewVisibility(R.id.itemTeacher, View.GONE)
+            } else {
+                views.setViewVisibility(R.id.itemTeacher, View.VISIBLE)
+                views.setTextViewText(R.id.itemTeacher, item.teacherText)
+            }
+
             views.setTextViewText(R.id.itemRoom, item.roomText.ifBlank { "-" })
 
             val bubbleBg = when (lesson.type.trim().lowercase(Locale.ROOT)) {
@@ -128,28 +146,20 @@ private class ScheduleWidgetFactory(
 
     override fun getItemId(position: Int): Long = position.toLong()
 
-    override fun hasStableIds(): Boolean = true
-}
-
-private fun parseWidgetTimeRange(value: String): Pair<LocalTime, LocalTime>? {
-    val match = Regex("(\\d{1,2})\\s*:\\s*(\\d{2})\\s*[-�]\\s*(\\d{1,2})\\s*:\\s*(\\d{2})")
-        .find(value)
-        ?: return null
-
-    val startHour = match.groupValues[1].toIntOrNull() ?: return null
-    val startMinute = match.groupValues[2].toIntOrNull() ?: return null
-    val endHour = match.groupValues[3].toIntOrNull() ?: return null
-    val endMinute = match.groupValues[4].toIntOrNull() ?: return null
-
-    if (startHour !in 0..23 || endHour !in 0..23 || startMinute !in 0..59 || endMinute !in 0..59) {
-        return null
-    }
-
-    val start = LocalTime.of(startHour, startMinute)
-    val end = LocalTime.of(endHour, endMinute)
-    return start to if (end <= start) start.plusMinutes(45) else end
+    override fun hasStableIds(): Boolean = false
 }
 
 private fun dpToPx(context: Context, dp: Int): Int {
     return (dp * context.resources.displayMetrics.density).roundToInt()
 }
+
+
+private fun formatWidgetTime(timeRange: String, weekPattern: String): String {
+    val label = when (normalizeWeekPatternCode(weekPattern)) {
+        "odd" -> "Lichy"
+        "even" -> "Sudy"
+        else -> "Kazdy"
+    }
+    return "$timeRange • $label"
+}
+

@@ -1,4 +1,7 @@
-package cz.tal0052.edisonrozvrh
+package cz.tal0052.edisonrozvrh.widget
+
+import cz.tal0052.edisonrozvrh.R
+import cz.tal0052.edisonrozvrh.app.MainActivity
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -33,6 +36,7 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
             Intent.ACTION_TIMEZONE_CHANGED,
             Intent.ACTION_TIME_TICK -> {
                 refreshAll(context)
+                ScheduleWidgetSnapshotProvider.refreshAll(context)
             }
         }
 
@@ -69,18 +73,16 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 )
             )
 
-            val launchIntent = Intent(context, MainActivity::class.java)
-            val openAppPending = PendingIntent.getActivity(
-                context,
-                1000 + appWidgetId,
-                launchIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+            views.setImageViewResource(R.id.widgetOverlayLogo, R.drawable.logo_emblem)
+
+            val openAppPending = buildOpenAppPendingIntent(context, 1000 + appWidgetId)
             views.setOnClickPendingIntent(R.id.widgetTitle, openAppPending)
             views.setOnClickPendingIntent(R.id.widgetNow, openAppPending)
+            views.setOnClickPendingIntent(R.id.widgetHeader, openAppPending)
 
             val serviceIntent = Intent(context, ScheduleWidgetService::class.java).apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                data = android.net.Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
             }
             views.setRemoteAdapter(R.id.widgetList, serviceIntent)
             views.setEmptyView(R.id.widgetList, R.id.widgetEmpty)
@@ -90,6 +92,16 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
     }
 }
 
+internal fun buildOpenAppPendingIntent(context: Context, requestCode: Int): PendingIntent {
+    val launchIntent = Intent(context, MainActivity::class.java)
+    return PendingIntent.getActivity(
+        context,
+        requestCode,
+        launchIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+}
+
 internal fun LocalDate.toUiDay(): String {
     return when (dayOfWeek) {
         DayOfWeek.MONDAY -> "Pondeli"
@@ -97,19 +109,33 @@ internal fun LocalDate.toUiDay(): String {
         DayOfWeek.WEDNESDAY -> "Streda"
         DayOfWeek.THURSDAY -> "Ctvrtek"
         DayOfWeek.FRIDAY -> "Patek"
-        DayOfWeek.SATURDAY -> "Patek"
-        DayOfWeek.SUNDAY -> "Pondeli"
+        DayOfWeek.SATURDAY -> "Sobota"
+        DayOfWeek.SUNDAY -> "Nedele"
     }
 }
 
-private fun LocalDate.toCzechShortDay(): String {
+internal fun LocalDate.toCzechShortDay(): String {
     return when (dayOfWeek) {
         DayOfWeek.MONDAY -> "Po"
-        DayOfWeek.TUESDAY -> "Ut"
+        DayOfWeek.TUESDAY -> "\u00dat"
         DayOfWeek.WEDNESDAY -> "St"
-        DayOfWeek.THURSDAY -> "Ct"
-        DayOfWeek.FRIDAY -> "Pa"
+        DayOfWeek.THURSDAY -> "\u010ct"
+        DayOfWeek.FRIDAY -> "P\u00e1"
         DayOfWeek.SATURDAY -> "So"
         DayOfWeek.SUNDAY -> "Ne"
     }
 }
+
+internal fun LocalDate.toCzechLongDay(): String {
+    return when (dayOfWeek) {
+        DayOfWeek.MONDAY -> "Pond\u011bl\u00ed"
+        DayOfWeek.TUESDAY -> "\u00dater\u00fd"
+        DayOfWeek.WEDNESDAY -> "St\u0159eda"
+        DayOfWeek.THURSDAY -> "\u010ctvrtek"
+        DayOfWeek.FRIDAY -> "P\u00e1tek"
+        DayOfWeek.SATURDAY -> "Sobota"
+        DayOfWeek.SUNDAY -> "Ned\u011ble"
+    }
+}
+
+

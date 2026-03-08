@@ -1,4 +1,6 @@
-package cz.tal0052.edisonrozvrh
+﻿package cz.tal0052.edisonrozvrh
+
+import cz.tal0052.edisonrozvrh.map.resolveVsbRoomMapInfo
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull

@@ -1,4 +1,10 @@
-package cz.tal0052.edisonrozvrh
+package cz.tal0052.edisonrozvrh.ui.auth
+
+import cz.tal0052.edisonrozvrh.app.Lesson
+import cz.tal0052.edisonrozvrh.app.saveCurrentResults
+import cz.tal0052.edisonrozvrh.app.saveSchedule
+import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
+import cz.tal0052.edisonrozvrh.data.repository.EdisonRepository
 
 import android.annotation.SuppressLint
 import android.webkit.CookieManager
@@ -10,7 +16,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun EdisonLoginScreen(
-    onScheduleLoaded: (List<Lesson>) -> Unit
+    onDataLoaded: (List<Lesson>, CurrentResultsData?) -> Unit
 ) {
 
     AndroidView(
@@ -45,9 +51,15 @@ fun EdisonLoginScreen(
                                 return@Thread
                             }
 
+                            val currentResults = EdisonRepository.downloadCurrentResults(cookies)
+
                             saveSchedule(context, lessons)
+                            if (currentResults != null) {
+                                saveCurrentResults(context, currentResults)
+                            }
+
                             view?.post {
-                                onScheduleLoaded(lessons)
+                                onDataLoaded(lessons, currentResults)
                             }
                         }.start()
                     }

@@ -1,9 +1,11 @@
-﻿<resources>
+<resources>
     <string name="app_name">Edison Rozvrh</string>
-    <string name="widget_description">Dnešní rozvrh Edison</string>
+
+    <string name="widget_description">Dne&#353;n&#237; rozvrh Edison</string>
+    <string name="widget_description_enhanced">Rozvrh (Enhanced)</string>
+    <string name="widget_description_snapshot">Rozvrh (Snapshot)</string>
+
     <string name="widget_title_format">Rozvrh (%1$s)</string>
-    <string name="widget_no_lessons">Dnes bez výuky</string>
-    <string name="widget_now_format">Aktuálně %1$s</string>
+    <string name="widget_no_lessons">Dnes bez v&#253;uky</string>
+    <string name="widget_now_format">Aktu&#225;ln&#283; %1$s</string>
 </resources>
-
-

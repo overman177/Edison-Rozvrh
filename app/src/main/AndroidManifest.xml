@@ -15,7 +15,7 @@
         android:usesCleartextTraffic="true">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".app.MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.EdisonRozvrh">
@@ -26,8 +26,9 @@
         </activity>
 
         <receiver
-            android:name=".ScheduleWidgetProvider"
-            android:exported="true">
+            android:name=".widget.ScheduleWidgetProvider"
+            android:exported="true"
+            android:label="Rozvrh Enhanced">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="android.intent.action.TIME_SET" />
@@ -40,8 +41,24 @@
                 android:resource="@xml/schedule_widget_info" />
         </receiver>
 
+        <receiver
+            android:name=".widget.ScheduleWidgetSnapshotProvider"
+            android:exported="true"
+            android:label="Rozvrh Snapshot">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_TICK" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/schedule_widget_snapshot_info" />
+        </receiver>
+
         <service
-            android:name=".ScheduleWidgetService"
+            android:name=".widget.ScheduleWidgetService"
             android:exported="false"
             android:permission="android.permission.BIND_REMOTEVIEWS">
             <intent-filter>
@@ -52,4 +69,3 @@
     </application>
 
 </manifest>
-

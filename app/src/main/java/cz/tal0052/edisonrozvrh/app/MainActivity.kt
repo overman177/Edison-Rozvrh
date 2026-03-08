@@ -1,6 +1,6 @@
-@file:Suppress("SpellCheckingInspection")
+﻿@file:Suppress("SpellCheckingInspection")
 
-package cz.tal0052.edisonrozvrh
+package cz.tal0052.edisonrozvrh.app
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -53,7 +53,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +69,16 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import cz.tal0052.edisonrozvrh.R
+import cz.tal0052.edisonrozvrh.data.parser.CurrentResultItem
+import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
+import cz.tal0052.edisonrozvrh.map.resolveVsbRoomMapInfo
+import cz.tal0052.edisonrozvrh.ui.auth.EdisonLoginScreen
+import cz.tal0052.edisonrozvrh.ui.design.LessonTypePalette
+import cz.tal0052.edisonrozvrh.ui.design.UiColorConfig
+import cz.tal0052.edisonrozvrh.ui.home.ScheduleScreen
+import cz.tal0052.edisonrozvrh.widget.ScheduleWidgetProvider
+import cz.tal0052.edisonrozvrh.widget.ScheduleWidgetSnapshotProvider
 import com.google.gson.Gson
 import java.net.HttpURLConnection
 import java.net.URL
@@ -90,7 +99,8 @@ data class Lesson(
     val room: String,
     val day: String,
     val time: String,
-    val type: String
+    val type: String,
+    val weekPattern: String = "every"
 )
 
 data class StoredLesson(
@@ -99,10 +109,31 @@ data class StoredLesson(
     val room: String? = null,
     val day: String? = null,
     val time: String? = null,
-    val type: String? = null
+    val type: String? = null,
+    val weekPattern: String? = null
 )
 
-private const val SCHEDULE_CACHE_VERSION = 7
+data class StoredCurrentResultItem(
+    val semesterCode: String? = null,
+    val subjectNumber: String? = null,
+    val subjectShortcut: String? = null,
+    val subjectName: String? = null,
+    val creditPoints: String? = null,
+    val examPoints: String? = null,
+    val totalPoints: String? = null,
+    val grade: String? = null,
+    val ectsGrade: String? = null,
+    val detailUrl: String? = null
+)
+
+data class StoredCurrentResultsData(
+    val academicYear: String? = null,
+    val warningNote: String? = null,
+    val items: List<StoredCurrentResultItem>? = null
+)
+
+private const val SCHEDULE_CACHE_VERSION = 8
+private const val RESULTS_CACHE_VERSION = 1
 private const val VSB_MAP_PAGE_URL = "https://mapy.vsb.cz/maps/"
 private const val VSB_MAP_LANG = "cs"
 private val VSB_BRAND = UiColorConfig.VsbBrand
@@ -176,18 +207,33 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val lessonsState = remember { mutableStateOf<List<Lesson>?>(null) }
-                    val cached = loadSchedule(this)
+                    val resultsState = remember { mutableStateOf<CurrentResultsData?>(null) }
+                    val forceEdisonLoginState = remember { mutableStateOf(false) }
 
-                    if (cached != null) {
-                        lessonsState.value = cached
+                    val cachedLessons = loadSchedule(this)
+                    if (cachedLessons != null) {
+                        lessonsState.value = cachedLessons
                     }
 
-                    if (lessonsState.value == null) {
-                        EdisonLoginScreen { lessons ->
+                    val cachedResults = loadCurrentResults(this)
+                    if (cachedResults != null) {
+                        resultsState.value = cachedResults
+                    }
+
+                    if (lessonsState.value == null || forceEdisonLoginState.value) {
+                        EdisonLoginScreen { lessons, currentResults ->
                             lessonsState.value = lessons
+                            if (currentResults != null) {
+                                resultsState.value = currentResults
+                            }
+                            forceEdisonLoginState.value = false
                         }
                     } else {
-                        ScheduleScreen(lessonsState.value!!)
+                        ScheduleScreen(
+                            lessons = lessonsState.value!!,
+                            currentResults = resultsState.value,
+                            onRefreshFromEdison = { forceEdisonLoginState.value = true }
+                        )
                     }
                 }
             }
@@ -196,7 +242,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun ScheduleScreen(lessons: List<Lesson>) {
+private fun LegacyScheduleScreen(lessons: List<Lesson>) {
 
     val days = listOf("Pondeli", "Utery", "Streda", "Ctvrtek", "Patek")
 
@@ -214,7 +260,7 @@ fun ScheduleScreen(lessons: List<Lesson>) {
         pageCount = { days.size }
     )
     val selectedDayIndex = remember { mutableIntStateOf(todayIndex) }
-    val scope = rememberCoroutineScope()
+    val scope = remember { kotlinx.coroutines.CoroutineScope(Dispatchers.Main) }
     var now by remember { mutableStateOf(LocalTime.now()) }
     val context = LocalContext.current
 
@@ -394,7 +440,7 @@ private fun VsbLogoGlyph() {
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.Bottom
         ) {
-            val heights = listOf(10, 16, 8, 18, 12)
+            val heights = listOf(18, 12, 8, 12, 18)
             heights.forEach { h ->
                 Box(
                     modifier = Modifier
@@ -523,9 +569,9 @@ private fun DayTimeline(
                                 actionColor = palette.border
                             )
                         }
-                    }
                 }
             }
+        }
 
             if (showCurrentTime) {
                 val nowMinutes = now.hour * 60 + now.minute
@@ -605,7 +651,7 @@ private fun RoomMetaLine(
     actionColor: Color = MaterialTheme.colorScheme.primary
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = remember { kotlinx.coroutines.CoroutineScope(Dispatchers.Main) }
     val cleanedRoomText = remember(roomText) { normalizeRoomTextForDisplay(roomText) }
     val mapInfo = remember(cleanedRoomText) { resolveVsbRoomMapInfo(cleanedRoomText) }
     val mapQuery = remember(cleanedRoomText, mapInfo) {
@@ -788,6 +834,14 @@ fun normalizeDayForUi(day: String): String {
     }
 }
 
+fun normalizeWeekPatternCode(raw: String?): String {
+    val token = raw?.trim().orEmpty().lowercase(Locale.ROOT)
+    return when {
+        token.startsWith("odd") || token.startsWith("lich") || token.contains("nepar") -> "odd"
+        token.startsWith("even") || token.startsWith("sud") || token.contains("par") -> "even"
+        else -> "every"
+    }
+}
 fun saveSchedule(context: Context, lessons: List<Lesson>) {
 
     val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
@@ -799,6 +853,7 @@ fun saveSchedule(context: Context, lessons: List<Lesson>) {
     }
 
     ScheduleWidgetProvider.refreshAll(context)
+    ScheduleWidgetSnapshotProvider.refreshAll(context)
 }
 
 fun loadSchedule(context: Context): List<Lesson>? {
@@ -832,7 +887,8 @@ fun loadSchedule(context: Context): List<Lesson>? {
                 room = item.room?.trim().orEmpty(),
                 day = day,
                 time = time,
-                type = item.type?.trim().orEmpty().ifBlank { "other" }
+                type = item.type?.trim().orEmpty().ifBlank { "other" },
+                weekPattern = normalizeWeekPatternCode(item.weekPattern)
             )
         }
 
@@ -845,46 +901,81 @@ fun loadSchedule(context: Context): List<Lesson>? {
 
 
 
+fun saveCurrentResults(context: Context, currentResults: CurrentResultsData) {
+    val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
 
+    val stored = StoredCurrentResultsData(
+        academicYear = currentResults.academicYear,
+        warningNote = currentResults.warningNote,
+        items = currentResults.items.map { item ->
+            StoredCurrentResultItem(
+                semesterCode = item.semesterCode,
+                subjectNumber = item.subjectNumber,
+                subjectShortcut = item.subjectShortcut,
+                subjectName = item.subjectName,
+                creditPoints = item.creditPoints,
+                examPoints = item.examPoints,
+                totalPoints = item.totalPoints,
+                grade = item.grade,
+                ectsGrade = item.ectsGrade,
+                detailUrl = item.detailUrl
+            )
+        }
+    )
 
+    prefs.edit {
+        putInt("results_version", RESULTS_CACHE_VERSION)
+        putString("results_data", Gson().toJson(stored))
+    }
+}
 
+fun loadCurrentResults(context: Context): CurrentResultsData? {
+    val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
+    val version = prefs.getInt("results_version", 0)
+    if (version != RESULTS_CACHE_VERSION) {
+        prefs.edit {
+            remove("results_data")
+        }
+        return null
+    }
 
+    val json = prefs.getString("results_data", null) ?: return null
 
+    return try {
+        val stored = Gson().fromJson(json, StoredCurrentResultsData::class.java)
+            ?: return null
 
+        val items = stored.items.orEmpty().mapNotNull { item ->
+            val subjectName = item.subjectName?.trim().orEmpty()
+            if (subjectName.isBlank()) {
+                return@mapNotNull null
+            }
 
+            CurrentResultItem(
+                semesterCode = item.semesterCode?.trim().orEmpty(),
+                subjectNumber = item.subjectNumber?.trim().orEmpty(),
+                subjectShortcut = item.subjectShortcut?.trim().orEmpty(),
+                subjectName = subjectName,
+                creditPoints = item.creditPoints?.trim().orEmpty(),
+                examPoints = item.examPoints?.trim().orEmpty(),
+                totalPoints = item.totalPoints?.trim().orEmpty(),
+                grade = item.grade?.trim().orEmpty(),
+                ectsGrade = item.ectsGrade?.trim().orEmpty(),
+                detailUrl = item.detailUrl?.trim().orEmpty()
+            )
+        }
 
+        if (items.isEmpty()) return null
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        CurrentResultsData(
+            academicYear = stored.academicYear?.trim().orEmpty(),
+            warningNote = stored.warningNote?.trim().orEmpty(),
+            items = items
+        )
+    } catch (_: Exception) {
+        null
+    }
+}
 
 
 

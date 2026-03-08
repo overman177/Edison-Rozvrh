@@ -1,4 +1,4 @@
-package cz.tal0052.edisonrozvrh
+package cz.tal0052.edisonrozvrh.ui.design
 
 import androidx.compose.ui.graphics.Color
 

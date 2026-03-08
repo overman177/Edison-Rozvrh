@@ -1,4 +1,9 @@
-﻿package cz.tal0052.edisonrozvrh
+﻿package cz.tal0052.edisonrozvrh.data.repository
+
+import cz.tal0052.edisonrozvrh.app.Lesson
+import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
+import cz.tal0052.edisonrozvrh.data.parser.EdisonParser
+import cz.tal0052.edisonrozvrh.data.parser.ScheduleContext
 
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -7,6 +12,7 @@ import okhttp3.Request
 object EdisonRepository {
 
     private const val SCHEDULE_URL = "https://edison.sso.vsb.cz/wps/myportal/student/rozvrh/rozvrh"
+    private const val RESULTS_URL = "https://edison.sso.vsb.cz/wps/myportal/student/studium/aktualni-vysledky"
     private const val SPORTS_URL = "https://edison.sso.vsb.cz/wps/myportal/student/rozvrh/volba-sportu"
     private const val SPORTS_MY_ACTIVITIES_URL =
         "https://edison.sso.vsb.cz/wps/.cz.vsb.edison.edu.study.pass.portlet/jaxrs/sports/myactivities"
@@ -74,7 +80,8 @@ object EdisonRepository {
                 room = detail?.room?.ifBlank { seed.room } ?: seed.room,
                 day = seed.day,
                 time = seed.time,
-                type = mergedType
+                type = mergedType,
+                weekPattern = seed.weekPattern
             )
 
             lessons.add(lesson)
@@ -100,7 +107,8 @@ object EdisonRepository {
                     room = seed.room,
                     day = seed.day,
                     time = seed.time,
-                    type = if (seed.type.isBlank()) "sport" else seed.type
+                    type = if (seed.type.isBlank()) "sport" else seed.type,
+                    weekPattern = seed.weekPattern
                 )
             )
         }
@@ -111,11 +119,28 @@ object EdisonRepository {
                 lesson.day.lowercase(),
                 lesson.time.lowercase(),
                 lesson.teacher.lowercase(),
-                lesson.room.lowercase()
+                lesson.room.lowercase(),
+                lesson.weekPattern.lowercase()
             ).joinToString("|")
         }
 
         return merged.ifEmpty { null }
+    }
+
+    fun downloadCurrentResults(cookies: String?): CurrentResultsData? {
+        if (cookies.isNullOrBlank()) return null
+
+        val request = Request.Builder()
+            .url(RESULTS_URL)
+            .addHeader("Cookie", cookies)
+            .addHeader("Referer", SCHEDULE_URL)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            val html = response.body.string()
+            return EdisonParser.parseCurrentResults(html)
+        }
     }
 
     private fun downloadSchedule(cookies: String): String? {
@@ -190,3 +215,7 @@ object EdisonRepository {
         }
     }
 }
+
+
+
+

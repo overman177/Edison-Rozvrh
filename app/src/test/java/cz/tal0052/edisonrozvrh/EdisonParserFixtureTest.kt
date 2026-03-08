@@ -1,5 +1,10 @@
 ﻿package cz.tal0052.edisonrozvrh
 
+import cz.tal0052.edisonrozvrh.app.Lesson
+import cz.tal0052.edisonrozvrh.app.buildPositionedLessonsForDay
+import cz.tal0052.edisonrozvrh.data.parser.EdisonParser
+
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -42,7 +47,8 @@ class EdisonParserFixtureTest {
                 room = seed.room,
                 day = seed.day,
                 time = seed.time,
-                type = seed.type
+                type = seed.type,
+                weekPattern = seed.weekPattern
             )
         }
 
@@ -76,6 +82,7 @@ class EdisonParserFixtureTest {
         assertTrue("Expected parsed sport day Utery", sport.day == "Utery")
         assertTrue("Expected parsed sport time", sport.time == "9:00 - 10:30")
         assertTrue("Expected parsed sport subject", sport.subject == "Volejbal")
+        assertEquals("every", sport.weekPattern)
     }
     @Test
     fun parseSportActivitiesJson_fixture_parsesApiPayload() {
@@ -85,7 +92,7 @@ class EdisonParserFixtureTest {
                 "sportTitle": "Volejbal",
                 "weekDayAbbrev": "Út",
                 "scheduleWindowTimeText": "9:00-10:30",
-                "sportPlaceTitle": "Tělocvična Kolej A",
+                "sportPlaceTitle": "Telocvicna Kolej A",
                 "teacherName": "Kyselová"
               }
             ]
@@ -98,5 +105,131 @@ class EdisonParserFixtureTest {
         assertTrue("Expected parsed sport day Utery", sport.day == "Utery")
         assertTrue("Expected parsed sport time", sport.time == "9:00 - 10:30")
         assertTrue("Expected parsed sport type", sport.type == "sport")
+        assertEquals("every", sport.weekPattern)
+    }
+
+    @Test
+    fun parseCurrentResults_fixture_parsesRowsAndSummary() {
+        val file = sequenceOf(
+            File("fixtures/results_preview.html"),
+            File("../fixtures/results_preview.html")
+        ).firstOrNull { it.exists() } ?: File("fixtures/results_preview.html")
+        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
+
+        val html = file.readText()
+        val currentResults = EdisonParser.parseCurrentResults(html)
+
+        assertNotNull("Current results are null", currentResults)
+        assertTrue("Expected at least 10 result rows", currentResults!!.items.size >= 10)
+        assertEquals("Expected academic year", "2025/2026", currentResults.academicYear)
+        assertTrue("Warning note should be parsed", currentResults.warningNote.isNotBlank())
+    }
+
+    @Test
+    fun parseCurrentResults_fixture_parsesIconAndNumericCells() {
+        val file = sequenceOf(
+            File("fixtures/results_preview.html"),
+            File("../fixtures/results_preview.html")
+        ).firstOrNull { it.exists() } ?: File("fixtures/results_preview.html")
+        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
+
+        val html = file.readText()
+        val currentResults = EdisonParser.parseCurrentResults(html)
+        assertNotNull("Current results are null", currentResults)
+
+        val fyi = currentResults!!.items.firstOrNull { it.subjectShortcut == "FYI" }
+        assertNotNull("FYI row was not parsed", fyi)
+        assertEquals("22", fyi!!.creditPoints)
+        assertEquals("35", fyi.examPoints)
+        assertEquals("57", fyi.totalPoints)
+        assertEquals("3", fyi.grade)
+        assertEquals("E", fyi.ectsGrade)
+        assertTrue("Detail URL should be absolute", fyi.detailUrl.startsWith("https://edison.sso.vsb.cz/"))
+
+        val alg = currentResults.items.firstOrNull { it.subjectShortcut == "ALG I" }
+        assertNotNull("ALG I row was not parsed", alg)
+        assertEquals("...", alg!!.creditPoints)
+        assertEquals("...", alg.totalPoints)
+    }
+    @Test
+    fun parseSchedulePreview_fixture_parsesWeekPatternHints() {
+        val file = sequenceOf(
+            File("fixtures/schedule_preview.html"),
+            File("../fixtures/schedule_preview.html")
+        ).firstOrNull { it.exists() } ?: File("fixtures/schedule_preview.html")
+        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
+
+        val html = file.readText()
+        val context = EdisonParser.parseScheduleContext(html)
+        assertNotNull("Schedule context is null", context)
+
+        val oop = context!!.activities.firstOrNull { it.subject == "OOP" }
+        assertNotNull("OOP lesson was not parsed", oop)
+        assertEquals("even", oop!!.weekPattern)
+
+        assertTrue(
+            "Expected at least one weekly lesson",
+            context.activities.any { it.weekPattern == "every" }
+        )
+    }
+
+    @Test
+    fun parseScheduleContext_inlineHtml_parsesOddWeekPattern() {
+        val html = """
+            <html><body>
+              <form id="f" name="f" action="/schedule">
+                <table class="schedTable">
+                  <tbody>
+                    <tr>
+                      <th>Den</th>
+                      <th>8:00<br/>8:45</th>
+                    </tr>
+                    <tr>
+                      <th>Pondělí</th>
+                      <td>
+                        <table class="actTable schedLecture">
+                          <tr>
+                            <td><a href="#"><abbr>ALG</abbr></a><b>Lichý</b></td>
+                            <td class="rightAlign topAlign" rowspan="2">
+                              <a class="commandLink" onclick="return myfaces.oam.submitForm('f','f:detailLink',null,[['concreteActivityId','123']]);"></a>
+                            </td>
+                          </tr>
+                          <tr><td>Ing. Test</td></tr>
+                          <tr><td>PORUA1</td><td class="rightAlign">P/<span class="outputText">01</span></td></tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </form>
+            </body></html>
+        """.trimIndent()
+
+        val context = EdisonParser.parseScheduleContext(html)
+        assertNotNull("Schedule context should be parsed", context)
+
+        val activity = context!!.activities.firstOrNull()
+        assertNotNull("Expected parsed activity", activity)
+        assertEquals("odd", activity!!.weekPattern)
+    }
+    @Test
+    fun parseSudyLichyFixture_parsesAllWeekPatterns() {
+        val file = sequenceOf(
+            File("fixtures/sudy_lichy_example.html"),
+            File("../fixtures/sudy_lichy_example.html")
+        ).firstOrNull { it.exists() } ?: File("fixtures/sudy_lichy_example.html")
+        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
+
+        val html = file.readText()
+        val context = EdisonParser.parseScheduleContext(html)
+        assertNotNull("Schedule context should be parsed", context)
+
+        val bySubject = context!!.activities.associateBy { it.subject }
+        assertEquals("odd", bySubject["ALG"]?.weekPattern)
+        assertEquals("even", bySubject["OOP"]?.weekPattern)
+        assertEquals("every", bySubject["SWI"]?.weekPattern)
     }
 }
+
+
+
