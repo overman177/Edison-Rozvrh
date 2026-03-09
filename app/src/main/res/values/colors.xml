@@ -78,16 +78,16 @@
     <color name="lesson_accent_default">#FF9CB5B3</color>
 
     <!-- Widget root gradient start color. -->
-    <color name="widget_root_gradient_start">#FF0A1620</color>
+    <color name="widget_root_gradient_start">#CC0A1620</color>
     <!-- Widget root gradient end color. -->
-    <color name="widget_root_gradient_end">#FF050E14</color>
+    <color name="widget_root_gradient_end">#B3050E14</color>
     <!-- Widget root outer stroke color. -->
-    <color name="widget_root_stroke">#6631AAB0</color>
+    <color name="widget_root_stroke">#0031AAB0</color>
 
     <!-- Widget header gradient start color. -->
-    <color name="widget_header_gradient_start">#2B14938B</color>
+    <color name="widget_header_gradient_start">#FF0E2530</color>
     <!-- Widget header gradient end color. -->
-    <color name="widget_header_gradient_end">#1414938B</color>
+    <color name="widget_header_gradient_end">#FF0E2530</color>
     <!-- Widget header border color. -->
     <color name="widget_header_stroke">#5C33C9C0</color>
     <!-- Background of the current-time pill in widget header. -->
@@ -120,31 +120,36 @@
     <color name="widget_room_pill_stroke">#7051CDC5</color>
 
     <!-- Shared card surface gradient start for all lesson cards. -->
-    <color name="widget_card_surface_start">#36263A43</color>
+    <color name="widget_card_surface_start">#FF0A1620</color>
     <!-- Shared card surface gradient end for all lesson cards. -->
-    <color name="widget_card_surface_end">#1821353D</color>
+    <color name="widget_card_surface_end">#FF08131C</color>
 
     <!-- Fill color for seminar widget card. -->
-    <color name="widget_card_cviko_fill">#1A03A9F4</color>
+    <color name="widget_card_cviko_fill">#FF0D2331</color>
     <!-- Border color for seminar widget card. -->
     <color name="widget_card_cviko_stroke">#6B03A9F4</color>
     <!-- Fill color for lecture widget card. -->
-    <color name="widget_card_prednaska_fill">#1AF44336</color>
+    <color name="widget_card_prednaska_fill">#FF2A171C</color>
     <!-- Border color for lecture widget card. -->
     <color name="widget_card_prednaska_stroke">#6BF44336</color>
     <!-- Fill color for lab widget card. -->
-    <color name="widget_card_lab_fill">#1A4CAF50</color>
+    <color name="widget_card_lab_fill">#FF15261D</color>
     <!-- Border color for lab widget card. -->
     <color name="widget_card_lab_stroke">#6B4CAF50</color>
     <!-- Fill color for sport widget card. -->
-    <color name="widget_card_sport_fill">#16FFEB3B</color>
+    <color name="widget_card_sport_fill">#FF2A2817</color>
     <!-- Border color for sport widget card. -->
     <color name="widget_card_sport_stroke">#6BFFEB3B</color>
     <!-- Fill color for default widget card. -->
-    <color name="widget_card_default_fill">#1F8ABAB5</color>
+    <color name="widget_card_default_fill">#FF13222A</color>
     <!-- Border color for default widget card. -->
     <color name="widget_card_default_stroke">#6B9CB5B3</color>
 
     <!-- Accent text color for snapshot widget's highlighted lesson. -->
     <color name="widget_snapshot_accent">#FF2ED7CC</color>
 </resources>
+
+
+
+
+

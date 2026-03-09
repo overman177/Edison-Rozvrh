@@ -44,7 +44,7 @@
                 android:format24Hour="HH:mm"
                 android:letterSpacing="0.04"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="12sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <LinearLayout
