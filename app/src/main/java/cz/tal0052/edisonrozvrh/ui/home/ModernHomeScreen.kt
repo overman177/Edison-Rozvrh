@@ -1,5 +1,7 @@
 package cz.tal0052.edisonrozvrh.ui.home
 
+import android.content.Intent
+import android.net.Uri
 import cz.tal0052.edisonrozvrh.R
 import cz.tal0052.edisonrozvrh.app.Lesson
 import cz.tal0052.edisonrozvrh.app.PositionedLesson
@@ -10,6 +12,7 @@ import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
 import cz.tal0052.edisonrozvrh.data.parser.StudyField
 import cz.tal0052.edisonrozvrh.data.parser.StudyInfoData
 import cz.tal0052.edisonrozvrh.data.parser.StudyPageData
+import cz.tal0052.edisonrozvrh.map.resolveVsbRoomMapInfo
 import cz.tal0052.edisonrozvrh.ui.design.LessonTypePalette
 import cz.tal0052.edisonrozvrh.ui.design.UiColorConfig
 
@@ -48,11 +51,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -63,11 +69,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import java.text.Normalizer
+import java.net.HttpURLConnection
+import java.net.URL
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.temporal.IsoFields
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
 
 private enum class HomeTab(val label: String) {
     UNIVERSITY("Studium"),
@@ -86,6 +99,10 @@ private enum class ResultSemesterFilter(val label: String) {
     WINTER("Zimn\u00ed"),
     SUMMER("Letn\u00ed")
 }
+
+private const val VSB_MAP_PAGE_URL = "https://mapy.vsb.cz/maps/"
+private const val VSB_MAP_LANG = "cs"
+private val roomMapUrlCache = mutableMapOf<String, String>()
 
 @Composable
 fun ScheduleScreen(
@@ -124,7 +141,7 @@ fun ScheduleScreen(
 
                 HomeTab.EXAMS -> PlaceholderTab(
                     title = "Term\u00edny",
-                    subtitle = "P\u0159ihl\u00e1\u0161ky na zkou\u0161ky a z\u00e1po\u010dty"
+                    subtitle = "Work in progress, dod\u011bl\u00e1m a\u017e budou zkou\u0161ky dostupn\u00e9."
                 )
             }
         }
@@ -210,7 +227,9 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
         val dayOfWeek = LocalDate.now().dayOfWeek
         dayOfWeek >= DayOfWeek.MONDAY && dayOfWeek <= DayOfWeek.FRIDAY
     }
-
+    val currentWeekParity = remember(nowMinutes) {
+        currentCalendarWeekParity(LocalDate.now())
+    }
     val dayLabelWidth = 58.dp
     val slotSpacing = 8.dp
     val slotWidth = 172.dp
@@ -278,8 +297,23 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
             color = MaterialTheme.colorScheme.onSurface
         )
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f))
+        ) {
+            Text(
+                text = "Aktualni tyden: ${currentWeekParity.label}",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
         if (teachingSlots.isEmpty()) {
             Card(
                 shape = RoundedCornerShape(22.dp),
@@ -413,7 +447,8 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
                                     GridLessonCard(
                                         item = item,
                                         cardWidth = widthValue,
-                                        cardHeight = lessonRowHeight
+                                        cardHeight = lessonRowHeight,
+                                        currentWeekParity = currentWeekParity
                                     )
                                     slotIndex += span.coerceAtLeast(1)
                                 } else {
@@ -446,15 +481,31 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
 private fun GridLessonCard(
     item: PositionedLesson,
     cardWidth: Dp,
-    cardHeight: Dp
+    cardHeight: Dp,
+    currentWeekParity: WeekParity
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val palette = lessonTypePaletteForGrid(item.lesson.type)
     val weekParity = remember(item.lesson.weekPattern) {
         toWeekParity(item.lesson.weekPattern)
     }
-
+    val isOutOfCurrentWeek = weekParity != WeekParity.EVERY && weekParity != currentWeekParity
+    val cleanedRoomText = remember(item.lesson.room) { normalizeRoomTextForDisplay(item.lesson.room) }
+    val mapInfo = remember(cleanedRoomText) { resolveVsbRoomMapInfo(cleanedRoomText) }
+    val mapQuery = remember(cleanedRoomText, mapInfo) {
+        mapSearchCandidates(mapInfo?.roomCode.orEmpty())
+            .ifEmpty { mapSearchCandidates(cleanedRoomText) }
+            .lastOrNull()
+            .orEmpty()
+            .ifBlank { cleanedRoomText }
+    }
+    val hasMapTarget = remember(mapQuery) { mapQuery.any { it.isLetterOrDigit() } }
     Card(
-        modifier = Modifier.width(cardWidth).height(cardHeight),
+        modifier = Modifier
+            .width(cardWidth)
+            .height(cardHeight)
+            .alpha(if (isOutOfCurrentWeek) 0.42f else 1f),
         colors = CardDefaults.cardColors(containerColor = palette.container),
         border = BorderStroke(1.dp, palette.border),
         shape = RoundedCornerShape(16.dp)
@@ -517,7 +568,18 @@ private fun GridLessonCard(
             CardMetaLine(
                 iconRes = R.drawable.ic_room,
                 text = item.lesson.room.ifBlank { "-" },
-                textColor = palette.meta
+                textColor = palette.meta,
+                actionLabel = if (hasMapTarget) "Mapa" else null,
+                onActionClick = if (!hasMapTarget) null else {
+                    {
+                        scope.launch {
+                            val mapUrl = resolveExternalMapUrl(mapQuery)
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(mapUrl)))
+                            }
+                        }
+                    }
+                }
             )
         }
     }
@@ -527,9 +589,14 @@ private fun GridLessonCard(
 private fun CardMetaLine(
     iconRes: Int,
     text: String,
-    textColor: Color
+    textColor: Color,
+    actionLabel: String? = null,
+    onActionClick: (() -> Unit)? = null
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Icon(
             painter = painterResource(id = iconRes),
             contentDescription = null,
@@ -539,11 +606,34 @@ private fun CardMetaLine(
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = text,
+            modifier = Modifier.weight(1f),
             color = textColor,
             fontWeight = FontWeight.Medium,
             fontSize = 13.sp,
-            maxLines = 1
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
+        if (actionLabel != null && onActionClick != null) {
+            Text(
+                text = actionLabel,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .padding(start = 10.dp)
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .background(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .clickable(onClick = onActionClick)
+                    .padding(horizontal = 10.dp, vertical = 3.dp)
+            )
+        }
     }
 }
 
@@ -1449,12 +1539,7 @@ private fun PlaceholderTab(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 21.sp
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Tenhle tab dopln\u00edme daty v dal\u0161\u00edm kroku.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 15.sp
-                )
+
             }
         }
     }
@@ -1464,6 +1549,98 @@ private fun minutesToLabel(totalMinutes: Int): String {
     val h = totalMinutes / 60
     val m = totalMinutes % 60
     return String.format(Locale.ROOT, "%d:%02d", h, m)
+}
+
+private fun buildExternalMapSearchUrl(query: String): String {
+    val q = Uri.encode(query)
+    return "$VSB_MAP_PAGE_URL?lang=$VSB_MAP_LANG&search=$q&q=$q&query=$q#search=$q"
+}
+
+private fun buildExternalMapItemUrl(id: String, type: String): String {
+    return "$VSB_MAP_PAGE_URL?id=${Uri.encode(id)}&type=${Uri.encode(type)}&lang=$VSB_MAP_LANG"
+}
+
+private suspend fun resolveExternalMapUrl(query: String): String {
+    val normalized = query.trim().uppercase(Locale.ROOT)
+    roomMapUrlCache[normalized]?.let { return it }
+
+    val candidates = mapSearchCandidates(query).ifEmpty {
+        listOf(query.trim()).filter { it.isNotBlank() }
+    }
+
+    for (candidate in candidates) {
+        val roomId = fetchRoomIdFromAutocomplete(candidate) ?: continue
+        val url = buildExternalMapItemUrl(id = roomId, type = "rooms")
+        roomMapUrlCache[normalized] = url
+        return url
+    }
+
+    return buildExternalMapSearchUrl(query)
+}
+
+private suspend fun fetchRoomIdFromAutocomplete(roomQuery: String): String? = withContext(Dispatchers.IO) {
+    val cleanQuery = roomQuery.trim()
+    if (cleanQuery.isBlank()) return@withContext null
+
+    val endpoint = "https://mapy.vsb.cz/maps/api/v0/rooms/autocomplete?query=${Uri.encode(cleanQuery)}&language=$VSB_MAP_LANG"
+    val connection = (URL(endpoint).openConnection() as? HttpURLConnection) ?: return@withContext null
+
+    try {
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 5000
+        connection.readTimeout = 5000
+        connection.instanceFollowRedirects = true
+
+        val code = connection.responseCode
+        if (code !in 200..299) return@withContext null
+
+        val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val array = JSONArray(body)
+        if (array.length() == 0) return@withContext null
+
+        val normalizedQuery = cleanQuery.uppercase(Locale.ROOT).replace(Regex("[^A-Z0-9]"), "")
+
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val codeText = item.optString("code").orEmpty()
+            val normalizedCode = codeText.uppercase(Locale.ROOT).replace(Regex("[^A-Z0-9]"), "")
+            if (normalizedCode == normalizedQuery) {
+                return@withContext item.opt("id")?.toString()?.takeIf { it.isNotBlank() }
+            }
+        }
+
+        return@withContext array.optJSONObject(0)?.opt("id")?.toString()?.takeIf { it.isNotBlank() }
+    } catch (_: Exception) {
+        return@withContext null
+    } finally {
+        connection.disconnect()
+    }
+}
+
+private fun mapSearchCandidates(roomQuery: String): List<String> {
+    val raw = roomQuery.trim().uppercase(Locale.ROOT)
+    if (raw.isBlank()) return emptyList()
+
+    val normalized = raw.replace(Regex("[^A-Z0-9]"), "")
+    if (normalized.isBlank()) return listOf(raw)
+
+    val list = mutableListOf(normalized)
+    if (normalized.startsWith("POR") && normalized.length > 3) {
+        list += normalized.removePrefix("POR")
+    }
+    return list.distinct()
+}
+
+private fun normalizeRoomTextForDisplay(rawRoom: String): String {
+    val withoutParentheses = rawRoom.replace(Regex("\\s*\\([^)]*\\)"), " ").trim()
+    val parts = withoutParentheses
+        .split(',', ';', '/')
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+
+    if (parts.isEmpty()) return withoutParentheses
+    return parts.joinToString(", ")
 }
 
 @Composable
@@ -1542,6 +1719,11 @@ private fun buildTeachingSlots(positionedLessons: List<PositionedLesson>): List<
 
     return slots
 }
+private fun currentCalendarWeekParity(date: LocalDate): WeekParity {
+    val weekOfYear = date.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)
+    return if (weekOfYear % 2 == 0) WeekParity.EVEN else WeekParity.ODD
+}
+
 private fun toWeekParity(rawPattern: String): WeekParity {
     return when (normalizeWeekPatternCode(rawPattern)) {
         "odd" -> WeekParity.ODD
@@ -1549,6 +1731,3 @@ private fun toWeekParity(rawPattern: String): WeekParity {
         else -> WeekParity.EVERY
     }
 }
-
-
-
