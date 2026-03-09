@@ -108,7 +108,7 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:paddingHorizontal="16dp"
-                android:text="Dnes bez vyuky"
+                android:text="@string/widget_no_lessons"
                 android:textColor="@color/widget_text_empty"
                 android:textSize="13sp"
                 android:visibility="gone" />

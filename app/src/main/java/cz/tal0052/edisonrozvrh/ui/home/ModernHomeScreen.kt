@@ -10,8 +10,6 @@ import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
 import cz.tal0052.edisonrozvrh.ui.design.LessonTypePalette
 import cz.tal0052.edisonrozvrh.ui.design.UiColorConfig
 
-import android.content.Intent
-import android.net.Uri
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -52,10 +50,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,20 +67,20 @@ import kotlinx.coroutines.delay
 
 private enum class HomeTab(val label: String) {
     UNIVERSITY("Univerzita"),
-    RESULTS("Vysledky"),
-    EXAMS("Zkousky"),
+    RESULTS("V\u00fdsledky"),
+    EXAMS("Zkou\u0161ky"),
     SCHEDULE("Rozvrh")
 }
 
 private enum class WeekParity(val label: String) {
-    ODD("Lichy"),
-    EVEN("Sudy"),
-    EVERY("Kazdy")
+    ODD("Lich\u00fd"),
+    EVEN("Sud\u00fd"),
+    EVERY("Ka\u017ed\u00fd")
 }
 
 private enum class ResultSemesterFilter(val label: String) {
-    WINTER("Zimni"),
-    SUMMER("Letni")
+    WINTER("Zimn\u00ed"),
+    SUMMER("Letn\u00ed")
 }
 
 @Composable
@@ -110,7 +109,7 @@ fun ScheduleScreen(
                 HomeTab.SCHEDULE -> ScheduleGridTab(lessons)
                 HomeTab.UNIVERSITY -> PlaceholderTab(
                     title = "Novinky",
-                    subtitle = "Harmonogram a dulezite terminy"
+                    subtitle = "Harmonogram a d\u016fle\u017eit\u00e9 term\u00edny"
                 )
 
                 HomeTab.RESULTS -> ResultsTab(
@@ -119,8 +118,8 @@ fun ScheduleScreen(
                 )
 
                 HomeTab.EXAMS -> PlaceholderTab(
-                    title = "Terminy",
-                    subtitle = "Prihlasky na zkousky a zapocty"
+                    title = "Term\u00edny",
+                    subtitle = "P\u0159ihl\u00e1\u0161ky na zkou\u0161ky a z\u00e1po\u010dty"
                 )
             }
         }
@@ -283,7 +282,7 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f))
             ) {
                 Text(
-                    text = "V tomhle tydnu nejsou v rozvrhu zadne hodiny.",
+                    text = "V tomhle t\u00fddnu nejsou v rozvrhu \u017e\u00e1dn\u00e9 hodiny.",
                     modifier = Modifier.padding(20.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 16.sp
@@ -566,7 +565,6 @@ private fun ResultsTab(
     currentResults: CurrentResultsData?,
     onRefreshFromEdison: () -> Unit
 ) {
-    val context = LocalContext.current
     val scrollState = rememberScrollState()
     val items = currentResults?.items.orEmpty()
     var semesterFilter by rememberSaveable { mutableStateOf(ResultSemesterFilter.WINTER) }
@@ -594,17 +592,98 @@ private fun ResultsTab(
             .verticalScroll(scrollState)
             .padding(16.dp)
     ) {
-        Text(
-            text = "Vysledky",
-            fontSize = 42.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Text(
+                text = "V\u00fdsledky",
+                fontSize = 42.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Button(
+                onClick = onRefreshFromEdison,
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                Text("Na\u010d\u00edst z Edisonu")
+            }
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        Button(onClick = onRefreshFromEdison) {
-            Text("Nacist z Edisonu")
+        if (currentResults == null) {
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f))
+            ) {
+                Text(
+                    text = "Data zat\u00edm nejsou na\u010dtena. Klikni na Na\u010d\u00edst z Edisonu.",
+                    modifier = Modifier.padding(18.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 15.sp
+                )
+            }
+            return
+        }
+
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f))
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                if (currentResults.academicYear.isNotBlank()) {
+                    Text(
+                        text = currentResults.academicYear,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+
+                Text(
+                    text = "$gradedCount z ${filteredItems.size} p\u0159edm\u011bt\u016f m\u00e1 u\u017e zn\u00e1mku",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = "Uzav\u0159eno bodov\u011b: $finishedCount",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp
+                )
+
+                if (averageGrade != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Pr\u016fm\u011brn\u00e1 zn\u00e1mka: ${String.format(Locale.ROOT, "%.2f", averageGrade)}",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+
+        if (currentResults.warningNote.isNotBlank()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = currentResults.warningNote,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -641,80 +720,6 @@ private fun ResultsTab(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        if (currentResults == null) {
-            Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f))
-            ) {
-                Text(
-                    text = "Data zatim nejsou nactena. Klikni na Nacist z Edisonu.",
-                    modifier = Modifier.padding(18.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 15.sp
-                )
-            }
-            return
-        }
-
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)
-            ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f))
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                if (currentResults.academicYear.isNotBlank()) {
-                    Text(
-                        text = currentResults.academicYear,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                }
-
-                Text(
-                    text = "$gradedCount z ${filteredItems.size} predmetu ma uz znamku",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 18.sp
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Text(
-                    text = "Uzavreno bodove: $finishedCount",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp
-                )
-
-                if (averageGrade != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Prumerna znamka: ${String.format(Locale.ROOT, "%.2f", averageGrade)}",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-        }
-
-        if (currentResults.warningNote.isNotBlank()) {
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = currentResults.warningNote,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
         if (filteredItems.isEmpty()) {
             Card(
                 shape = RoundedCornerShape(20.dp),
@@ -724,7 +729,7 @@ private fun ResultsTab(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
             ) {
                 Text(
-                    text = "Pro vybrany semestr zatim nejsou dostupne zadne predmety.",
+                    text = "Pro vybran\u00fd semestr zat\u00edm nejsou dostupn\u00e9 \u017e\u00e1dn\u00e9 p\u0159edm\u011bty.",
                     modifier = Modifier.padding(16.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -732,15 +737,7 @@ private fun ResultsTab(
         }
 
         filteredItems.forEach { item ->
-            ResultItemCard(
-                item = item,
-                onOpenDetail = {
-                    if (item.detailUrl.isBlank()) return@ResultItemCard
-                    runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.detailUrl)))
-                    }
-                }
-            )
+            ResultItemCard(item = item)
             Spacer(modifier = Modifier.height(10.dp))
         }
 
@@ -750,8 +747,7 @@ private fun ResultsTab(
 
 @Composable
 private fun ResultItemCard(
-    item: CurrentResultItem,
-    onOpenDetail: () -> Unit
+    item: CurrentResultItem
 ) {
     var isDetailExpanded by rememberSaveable(
         item.semesterCode,
@@ -790,7 +786,7 @@ private fun ResultItemCard(
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = "Znamka",
+                        text = "Zn\u00e1mka",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium
@@ -829,15 +825,15 @@ private fun ResultItemCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ResultValueChip("Zapocet", item.creditPoints)
-                ResultValueChip("Zkouska", item.examPoints)
+                ResultValueChip("Z\u00e1po\u010det", item.creditPoints)
+                ResultValueChip("Zkou\u0161ka", item.examPoints)
                 ResultValueChip("Celkem", item.totalPoints)
             }
 
             if (detail != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = if (isDetailExpanded) "Skryt detail predmetu" else "Zobrazit detail predmetu",
+                    text = if (isDetailExpanded) "Skr\u00fdt detail p\u0159edm\u011btu" else "Zobrazit detail p\u0159edm\u011btu",
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp,
@@ -847,23 +843,6 @@ private fun ResultItemCard(
                 if (isDetailExpanded) {
                     Spacer(modifier = Modifier.height(8.dp))
                     ResultDetailBlock(detail = detail)
-                }
-            }
-
-            if (item.detailUrl.isNotBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (detail == null) "Zobrazit detail predmetu" else "Web detail",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        modifier = Modifier.clickable { onOpenDetail() }
-                    )
                 }
             }
         }
@@ -910,7 +889,7 @@ private fun ResultDetailBlock(detail: cz.tal0052.edisonrozvrh.data.parser.Curren
             )
             detail.totalRows.forEach { row ->
                 ResultDetailLine(
-                    label = row.label.ifBlank { "Polozka" },
+                    label = row.label.ifBlank { "Polo\u017eka" },
                     value = listOf(row.points, row.rating)
                         .filter { it.isNotBlank() }
                         .joinToString(" | ")
@@ -922,29 +901,22 @@ private fun ResultDetailBlock(detail: cz.tal0052.edisonrozvrh.data.parser.Curren
         if (detail.checkpoints.isNotEmpty()) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Dilci podminky",
+                text = "D\u00edl\u010d\u00ed podm\u00ednky",
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 12.sp
             )
-            detail.checkpoints.forEach { checkpoint ->
-                val checkpointLabel = buildString {
-                    append(checkpoint.label)
-                    if (checkpoint.requirement.isNotBlank()) {
-                        append(" (")
-                        append(checkpoint.requirement)
-                        append(")")
-                    }
-                }.ifBlank { "Polozka" }
+            detail.checkpoints.forEachIndexed { index, checkpoint ->
+                val checkpointLabel = checkpoint.label.ifBlank { "Polo\u017eka" }
+                val checkpointPoints = checkpoint.points.takeIf { it.isNotBlank() } ?: "..."
+                val checkpointStatus = checkpoint.status.takeIf { it.isNotBlank() } ?: "-"
 
-                val checkpointValue = listOf(
-                    checkpoint.points.takeIf { it.isNotBlank() } ?: "...",
-                    checkpoint.status.takeIf { it.isNotBlank() }
-                ).joinToString(" | ")
-
-                ResultDetailLine(
+                ResultCheckpointLine(
                     label = checkpointLabel,
-                    value = checkpointValue
+                    requirement = checkpoint.requirement,
+                    points = checkpointPoints,
+                    status = checkpointStatus,
+                    showDivider = index < detail.checkpoints.lastIndex
                 )
             }
         }
@@ -955,7 +927,7 @@ private fun ResultDetailBlock(detail: cz.tal0052.edisonrozvrh.data.parser.Curren
 private fun ResultDetailLine(label: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.Top
     ) {
         Text(
@@ -963,18 +935,87 @@ private fun ResultDetailLine(label: String, value: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.weight(0.46f)
+            modifier = Modifier.weight(0.52f)
         )
         Text(
             text = value,
             color = MaterialTheme.colorScheme.onSurface,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(0.54f)
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(0.48f)
         )
     }
 }
 
+@Composable
+private fun ResultCheckpointLine(
+    label: String,
+    requirement: String,
+    points: String,
+    status: String,
+    showDivider: Boolean
+) {
+    val statusNormalized = status.trim().lowercase(Locale.ROOT)
+    val statusColor = when {
+        statusNormalized.contains("nespl") || statusNormalized == "no" -> MaterialTheme.colorScheme.error
+        statusNormalized.contains("spln") || statusNormalized == "ok" || statusNormalized == "ano" -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    val bodyText = if (requirement.isNotBlank()) "Body: $points / $requirement" else "Body: $points"
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Text(
+                text = label,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(0.62f)
+            )
+            Column(
+                modifier = Modifier.weight(0.38f),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Text(
+                    text = bodyText,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.End
+                )
+                Text(
+                    text = "Stav: $status",
+                    color = statusColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.End
+                )
+            }
+        }
+
+        if (showDivider) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.14f))
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+        }
+    }
+}
 private fun matchesSemesterFilter(
     semesterCode: String,
     filter: ResultSemesterFilter
@@ -1076,7 +1117,7 @@ private fun PlaceholderTab(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Tenhle tab doplnime daty v dalsim kroku.",
+                    text = "Tenhle tab dopln\u00edme daty v dal\u0161\u00edm kroku.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 15.sp
                 )
@@ -1174,14 +1215,3 @@ private fun toWeekParity(rawPattern: String): WeekParity {
         else -> WeekParity.EVERY
     }
 }
-
-
-
-
-
-
-
-
-
-
-
