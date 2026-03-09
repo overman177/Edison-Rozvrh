@@ -194,24 +194,10 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
     val lessonsByDay = remember(lessons) {
         dayOrder.associateWith { day -> buildPositionedLessonsForDay(lessons, day) }
     }
-
-    val timelineBoundaries = remember(lessonsByDay) {
-        lessonsByDay.values
-            .flatten()
-            .flatMap { listOf(it.startMinutes, it.endMinutes) }
-            .distinct()
-            .sorted()
+    val allPositionedLessons = remember(lessonsByDay) { lessonsByDay.values.flatten() }
+    val teachingSlots = remember(allPositionedLessons) {
+        buildTeachingSlots(allPositionedLessons)
     }
-    val timeSegments = remember(timelineBoundaries) {
-        timelineBoundaries.zipWithNext()
-            .filter { (start, end) -> end > start }
-    }
-    val isFifteenMinuteBreakSegment = remember(timeSegments) {
-        timeSegments.map { (start, end) ->
-            (end - start) == 15
-        }
-    }
-
 
     val horizontalScroll = rememberScrollState()
     val verticalScroll = rememberScrollState()
@@ -222,24 +208,21 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
     }
 
     val dayLabelWidth = 58.dp
-    val segmentSpacing = 8.dp
-    val minuteWidth = 2.2.dp
+    val slotSpacing = 8.dp
+    val slotWidth = 172.dp
     val lessonRowHeight = 134.dp
     val dayRowSpacing = 10.dp
-    val segmentWidths = remember(timeSegments, minuteWidth) {
-        timeSegments.map { (start, end) -> (end - start) * minuteWidth.value }
-    }
 
-    val nowLineOffset = remember(timeSegments, nowMinutes, isWeekday, dayLabelWidth, segmentSpacing, minuteWidth) {
+    val nowLineOffset = remember(teachingSlots, nowMinutes, isWeekday, dayLabelWidth, slotSpacing, slotWidth) {
         if (!isWeekday) {
             null
         } else {
             calculateCurrentTimeLineOffset(
                 nowMinutes = nowMinutes,
-                timeSegments = timeSegments,
+                teachingSlots = teachingSlots,
                 dayLabelWidth = dayLabelWidth,
-                segmentSpacing = segmentSpacing,
-                minuteWidth = minuteWidth
+                slotSpacing = slotSpacing,
+                slotWidth = slotWidth
             )
         }
     }
@@ -293,7 +276,7 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        if (timeSegments.isEmpty()) {
+        if (teachingSlots.isEmpty()) {
             Card(
                 shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)),
@@ -319,6 +302,37 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
                     .horizontalScroll(horizontalScroll)
                     .verticalScroll(verticalScroll)
             ) {
+                Column(
+                    modifier = Modifier.padding(top = 64.dp),
+                    verticalArrangement = Arrangement.spacedBy(dayRowSpacing)
+                ) {
+                    dayOrder.forEach {
+                        Row(horizontalArrangement = Arrangement.spacedBy(slotSpacing)) {
+                            Box(
+                                modifier = Modifier
+                                    .width(dayLabelWidth)
+                                    .height(lessonRowHeight)
+                            )
+                            teachingSlots.forEach {
+                                Box(
+                                    modifier = Modifier
+                                        .width(slotWidth)
+                                        .height(lessonRowHeight)
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.08f),
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                        .border(
+                                            width = 1.dp,
+                                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f),
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                )
+                            }
+                        }
+                    }
+                }
+
                 val nowLineHeight = (lessonRowHeight * dayOrder.size) + (dayRowSpacing * (dayOrder.size - 1))
                 if (nowLineOffset != null) {
                     Box(
@@ -335,24 +349,22 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(dayRowSpacing)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(segmentSpacing)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(slotSpacing)) {
                         Box(modifier = Modifier.width(dayLabelWidth).height(52.dp))
-                        timeSegments.forEachIndexed { index, segment ->
-                            Column(modifier = Modifier.width(segmentWidths[index].dp)) {
-                                if (!isFifteenMinuteBreakSegment[index]) {
-                                    Text(
-                                        text = minutesToLabel(segment.first),
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 15.sp
-                                    )
-                                    Text(
-                                        text = minutesToLabel(segment.second),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 11.sp
-                                    )
-                                }
+                        teachingSlots.forEach { slot ->
+                            Column(modifier = Modifier.width(slotWidth)) {
+                                Text(
+                                    text = minutesToLabel(slot.first),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 15.sp
+                                )
+                                Text(
+                                    text = minutesToLabel(slot.second),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 11.sp
+                                )
                             }
                         }
                     }
@@ -361,7 +373,7 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
                         val positioned = lessonsByDay[day].orEmpty().sortedBy { it.startMinutes }
                         val byStart = positioned.associateBy { it.startMinutes }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(segmentSpacing)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(slotSpacing)) {
                             Box(
                                 modifier = Modifier
                                     .width(dayLabelWidth)
@@ -376,41 +388,46 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
                                 )
                             }
 
-                            var segmentIndex = 0
-                            while (segmentIndex < timeSegments.size) {
-                                val segmentStart = timeSegments[segmentIndex].first
-                                val item = byStart[segmentStart]
+                            var slotIndex = 0
+                            while (slotIndex < teachingSlots.size) {
+                                val slotStart = teachingSlots[slotIndex].first
+                                val item = byStart[slotStart]
 
                                 if (item != null) {
                                     var span = 0
-                                    var widthValue = 0f
-                                    var scanIndex = segmentIndex
-                                    while (scanIndex < timeSegments.size && timeSegments[scanIndex].first < item.endMinutes) {
-                                        widthValue += segmentWidths[scanIndex]
+                                    var scanIndex = slotIndex
+                                    while (scanIndex < teachingSlots.size && teachingSlots[scanIndex].first < item.endMinutes) {
                                         span++
                                         scanIndex++
                                     }
-                                    if (span > 1) {
-                                        widthValue += segmentSpacing.value * (span - 1)
+                                    val widthValue = if (span <= 1) {
+                                        slotWidth
+                                    } else {
+                                        slotWidth * span + slotSpacing * (span - 1)
                                     }
 
                                     GridLessonCard(
                                         item = item,
-                                        cardWidth = widthValue.dp,
+                                        cardWidth = widthValue,
                                         cardHeight = lessonRowHeight
                                     )
-                                    segmentIndex += span.coerceAtLeast(1)
+                                    slotIndex += span.coerceAtLeast(1)
                                 } else {
                                     Box(
                                         modifier = Modifier
-                                            .width(segmentWidths[segmentIndex].dp)
+                                            .width(slotWidth)
                                             .height(lessonRowHeight)
                                             .background(
-                                                color = MaterialTheme.colorScheme.background.copy(alpha = 0.45f),
+                                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.22f),
+                                                shape = RoundedCornerShape(16.dp)
+                                            )
+                                            .border(
+                                                width = 1.dp,
+                                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
                                                 shape = RoundedCornerShape(16.dp)
                                             )
                                     )
-                                    segmentIndex++
+                                    slotIndex++
                                 }
                             }
                         }
@@ -841,7 +858,7 @@ private fun ResultItemCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Web detail",
+                        text = if (detail == null) "Zobrazit detail predmetu" else "Web detail",
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp,
@@ -1090,33 +1107,32 @@ private fun rememberCurrentTimeMinutes(): Int {
 
 private fun calculateCurrentTimeLineOffset(
     nowMinutes: Int,
-    timeSegments: List<Pair<Int, Int>>,
+    teachingSlots: List<Pair<Int, Int>>,
     dayLabelWidth: Dp,
-    segmentSpacing: Dp,
-    minuteWidth: Dp
+    slotSpacing: Dp,
+    slotWidth: Dp
 ): Dp? {
-    if (timeSegments.isEmpty()) return null
-    if (nowMinutes < timeSegments.first().first || nowMinutes > timeSegments.last().second) return null
+    if (teachingSlots.isEmpty()) return null
+    if (nowMinutes < teachingSlots.first().first || nowMinutes > teachingSlots.last().second) return null
 
     val labelWidth = dayLabelWidth.value
-    val spacing = segmentSpacing.value
-    val minuteWidthValue = minuteWidth.value
+    val spacing = slotSpacing.value
+    val slotWidthValue = slotWidth.value
     var cursorX = labelWidth + spacing
 
-    for (index in timeSegments.indices) {
-        val (startMinutes, endMinutes) = timeSegments[index]
-        val segmentDuration = (endMinutes - startMinutes).coerceAtLeast(1)
-        val segmentWidth = segmentDuration * minuteWidthValue
+    for (index in teachingSlots.indices) {
+        val (startMinutes, endMinutes) = teachingSlots[index]
 
         if (nowMinutes in startMinutes..endMinutes) {
-            val fraction = ((nowMinutes - startMinutes).toFloat() / segmentDuration.toFloat()).coerceIn(0f, 1f)
-            return (cursorX + segmentWidth * fraction).dp
+            val duration = (endMinutes - startMinutes).coerceAtLeast(1)
+            val fraction = ((nowMinutes - startMinutes).toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+            return (cursorX + slotWidthValue * fraction).dp
         }
 
-        cursorX += segmentWidth
+        cursorX += slotWidthValue
 
-        if (index < timeSegments.lastIndex) {
-            val nextStart = timeSegments[index + 1].first
+        if (index < teachingSlots.lastIndex) {
+            val nextStart = teachingSlots[index + 1].first
             if (nowMinutes > endMinutes && nowMinutes < nextStart) {
                 val gapDuration = (nextStart - endMinutes).coerceAtLeast(1)
                 val gapFraction = ((nowMinutes - endMinutes).toFloat() / gapDuration.toFloat()).coerceIn(0f, 1f)
@@ -1129,6 +1145,28 @@ private fun calculateCurrentTimeLineOffset(
     return null
 }
 
+private fun buildTeachingSlots(positionedLessons: List<PositionedLesson>): List<Pair<Int, Int>> {
+    val defaultStart = (7 * 60) + 15
+    val defaultEnd = (19 * 60) + 15
+    val maxEnd = maxOf(defaultEnd, positionedLessons.maxOfOrNull { it.endMinutes } ?: defaultEnd)
+
+    val slots = mutableListOf<Pair<Int, Int>>()
+    val pattern = intArrayOf(45, 45, 15)
+    var current = defaultStart
+    var patternIndex = 0
+
+    while (current < maxEnd) {
+        val duration = pattern[patternIndex]
+        val next = current + duration
+        if (patternIndex != 2) {
+            slots += current to next
+        }
+        current = next
+        patternIndex = (patternIndex + 1) % pattern.size
+    }
+
+    return slots
+}
 private fun toWeekParity(rawPattern: String): WeekParity {
     return when (normalizeWeekPatternCode(rawPattern)) {
         "odd" -> WeekParity.ODD
@@ -1136,6 +1174,9 @@ private fun toWeekParity(rawPattern: String): WeekParity {
         else -> WeekParity.EVERY
     }
 }
+
+
+
 
 
 

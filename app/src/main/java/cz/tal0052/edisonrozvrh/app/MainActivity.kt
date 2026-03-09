@@ -133,7 +133,7 @@ data class StoredCurrentResultsData(
 )
 
 private const val SCHEDULE_CACHE_VERSION = 8
-private const val RESULTS_CACHE_VERSION = 1
+private const val RESULTS_CACHE_VERSION = 2
 private const val VSB_MAP_PAGE_URL = "https://mapy.vsb.cz/maps/"
 private const val VSB_MAP_LANG = "cs"
 private val roomMapUrlCache = mutableMapOf<String, String>()
@@ -902,28 +902,9 @@ fun loadSchedule(context: Context): List<Lesson>? {
 fun saveCurrentResults(context: Context, currentResults: CurrentResultsData) {
     val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
 
-    val stored = StoredCurrentResultsData(
-        academicYear = currentResults.academicYear,
-        warningNote = currentResults.warningNote,
-        items = currentResults.items.map { item ->
-            StoredCurrentResultItem(
-                semesterCode = item.semesterCode,
-                subjectNumber = item.subjectNumber,
-                subjectShortcut = item.subjectShortcut,
-                subjectName = item.subjectName,
-                creditPoints = item.creditPoints,
-                examPoints = item.examPoints,
-                totalPoints = item.totalPoints,
-                grade = item.grade,
-                ectsGrade = item.ectsGrade,
-                detailUrl = item.detailUrl
-            )
-        }
-    )
-
     prefs.edit {
         putInt("results_version", RESULTS_CACHE_VERSION)
-        putString("results_data", Gson().toJson(stored))
+        putString("results_data", Gson().toJson(currentResults))
     }
 }
 
@@ -940,40 +921,16 @@ fun loadCurrentResults(context: Context): CurrentResultsData? {
     val json = prefs.getString("results_data", null) ?: return null
 
     return try {
-        val stored = Gson().fromJson(json, StoredCurrentResultsData::class.java)
-            ?: return null
-
-        val items = stored.items.orEmpty().mapNotNull { item ->
-            val subjectName = item.subjectName?.trim().orEmpty()
-            if (subjectName.isBlank()) {
-                return@mapNotNull null
-            }
-
-            CurrentResultItem(
-                semesterCode = item.semesterCode?.trim().orEmpty(),
-                subjectNumber = item.subjectNumber?.trim().orEmpty(),
-                subjectShortcut = item.subjectShortcut?.trim().orEmpty(),
-                subjectName = subjectName,
-                creditPoints = item.creditPoints?.trim().orEmpty(),
-                examPoints = item.examPoints?.trim().orEmpty(),
-                totalPoints = item.totalPoints?.trim().orEmpty(),
-                grade = item.grade?.trim().orEmpty(),
-                ectsGrade = item.ectsGrade?.trim().orEmpty(),
-                detailUrl = item.detailUrl?.trim().orEmpty()
-            )
-        }
-
-        if (items.isEmpty()) return null
-
-        CurrentResultsData(
-            academicYear = stored.academicYear?.trim().orEmpty(),
-            warningNote = stored.warningNote?.trim().orEmpty(),
-            items = items
-        )
+        val parsed = Gson().fromJson(json, CurrentResultsData::class.java) ?: return null
+        if (parsed.items.isEmpty()) return null
+        parsed
     } catch (_: Exception) {
         null
     }
 }
+
+
+
 
 
 
