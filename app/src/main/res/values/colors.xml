@@ -78,61 +78,70 @@
     <color name="lesson_accent_default">#FF9CB5B3</color>
 
     <!-- Widget root gradient start color. -->
-    <color name="widget_root_gradient_start">#FF0D2024</color>
+    <color name="widget_root_gradient_start">#FF0A1620</color>
     <!-- Widget root gradient end color. -->
-    <color name="widget_root_gradient_end">#FF08171B</color>
+    <color name="widget_root_gradient_end">#FF050E14</color>
     <!-- Widget root outer stroke color. -->
-    <color name="widget_root_stroke">#FF2A5766</color>
+    <color name="widget_root_stroke">#6631AAB0</color>
 
     <!-- Widget header gradient start color. -->
-    <color name="widget_header_gradient_start">#3300A499</color>
+    <color name="widget_header_gradient_start">#2B14938B</color>
     <!-- Widget header gradient end color. -->
-    <color name="widget_header_gradient_end">#1F00A499</color>
+    <color name="widget_header_gradient_end">#1414938B</color>
     <!-- Widget header border color. -->
-    <color name="widget_header_stroke">#5900A499</color>
+    <color name="widget_header_stroke">#5C33C9C0</color>
     <!-- Background of the current-time pill in widget header. -->
-    <color name="widget_time_pill_fill">#3300A499</color>
+    <color name="widget_time_pill_fill">#2B1AA8A0</color>
     <!-- Border of the current-time pill in widget header. -->
-    <color name="widget_time_pill_stroke">#6600A499</color>
+    <color name="widget_time_pill_stroke">#8A43D7CE</color>
     <!-- Primary widget text color (titles/main labels). -->
-    <color name="widget_text_primary">#FFECFAF8</color>
+    <color name="widget_text_primary">#FFEFF9F8</color>
     <!-- Secondary widget text color (supporting labels). -->
-    <color name="widget_text_secondary">#FFAEE6E1</color>
+    <color name="widget_text_secondary">#FFB0DCD8</color>
     <!-- Empty-state text color in widget. -->
-    <color name="widget_text_empty">#FFB4D1CD</color>
+    <color name="widget_text_empty">#FF9FC5C2</color>
 
     <!-- Current timeline color in list widget timeline. -->
-    <color name="widget_timeline_line">#FF00A499</color>
+    <color name="widget_timeline_line">#FF2ED7CC</color>
     <!-- Vertical timeline rail color in list widget. -->
     <color name="widget_timeline_track">#FF2D5A66</color>
     <!-- Timeline dot color in list widget. -->
     <color name="widget_timeline_dot">#FF7FD6CF</color>
 
     <!-- Lesson time text color in list widget card. -->
-    <color name="widget_item_time">#FFCDEBE7</color>
+    <color name="widget_item_time">#FFB9DAD7</color>
     <!-- Lesson subject text color in list widget card. -->
     <color name="widget_item_subject">#FFF2FFFD</color>
     <!-- Lesson room/teacher text color in list widget card. -->
-    <color name="widget_item_room">#FFD0E8E4</color>
+    <color name="widget_item_room">#FFD9F4F0</color>
+    <!-- Fill color of room badge shown inside lesson card. -->
+    <color name="widget_room_pill_fill">#1F56CCC4</color>
+    <!-- Border color of room badge shown inside lesson card. -->
+    <color name="widget_room_pill_stroke">#7051CDC5</color>
+
+    <!-- Shared card surface gradient start for all lesson cards. -->
+    <color name="widget_card_surface_start">#36263A43</color>
+    <!-- Shared card surface gradient end for all lesson cards. -->
+    <color name="widget_card_surface_end">#1821353D</color>
 
     <!-- Fill color for seminar widget card. -->
-    <color name="widget_card_cviko_fill">#2B03A9F4</color>
+    <color name="widget_card_cviko_fill">#1A03A9F4</color>
     <!-- Border color for seminar widget card. -->
     <color name="widget_card_cviko_stroke">#6B03A9F4</color>
     <!-- Fill color for lecture widget card. -->
-    <color name="widget_card_prednaska_fill">#2BF44336</color>
+    <color name="widget_card_prednaska_fill">#1AF44336</color>
     <!-- Border color for lecture widget card. -->
     <color name="widget_card_prednaska_stroke">#6BF44336</color>
     <!-- Fill color for lab widget card. -->
-    <color name="widget_card_lab_fill">#2B4CAF50</color>
+    <color name="widget_card_lab_fill">#1A4CAF50</color>
     <!-- Border color for lab widget card. -->
     <color name="widget_card_lab_stroke">#6B4CAF50</color>
     <!-- Fill color for sport widget card. -->
-    <color name="widget_card_sport_fill">#2BFFEB3B</color>
+    <color name="widget_card_sport_fill">#16FFEB3B</color>
     <!-- Border color for sport widget card. -->
     <color name="widget_card_sport_stroke">#6BFFEB3B</color>
     <!-- Fill color for default widget card. -->
-    <color name="widget_card_default_fill">#2B9CB5B3</color>
+    <color name="widget_card_default_fill">#1F8ABAB5</color>
     <!-- Border color for default widget card. -->
     <color name="widget_card_default_stroke">#6B9CB5B3</color>
 

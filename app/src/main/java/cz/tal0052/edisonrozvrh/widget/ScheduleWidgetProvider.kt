@@ -14,7 +14,6 @@ import android.util.Log
 import android.widget.RemoteViews
 import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -100,15 +99,12 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 R.id.widgetDate,
                 today.format(DateTimeFormatter.ofPattern("d.M.", Locale.ROOT))
             )
-            views.setTextViewText(
-                R.id.widgetNow,
-                LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT))
-            )
 
             val openAppPending = buildOpenAppPendingIntent(context, 1000 + appWidgetId)
             views.setOnClickPendingIntent(R.id.widgetTitle, openAppPending)
             views.setOnClickPendingIntent(R.id.widgetNow, openAppPending)
             views.setOnClickPendingIntent(R.id.widgetHeader, openAppPending)
+            views.setOnClickPendingIntent(R.id.widgetLogo, openAppPending)
 
             runCatching {
                 val serviceIntent = Intent(context, ScheduleWidgetService::class.java).apply {
