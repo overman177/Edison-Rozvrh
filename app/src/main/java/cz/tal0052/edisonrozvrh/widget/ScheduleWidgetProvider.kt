@@ -9,6 +9,8 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.util.Log
 import android.widget.RemoteViews
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -24,33 +26,63 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         appWidgetIds.forEach { appWidgetId ->
+            runCatching {
+                updateWidget(context, appWidgetManager, appWidgetId)
+            }.onFailure { throwable ->
+                Log.e(TAG, "Failed to update widget id=$appWidgetId", throwable)
+            }
+        }
+    }
+
+    override fun onEnabled(context: Context) {
+        refreshAll(context)
+    }
+
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: android.os.Bundle
+    ) {
+        runCatching {
             updateWidget(context, appWidgetManager, appWidgetId)
+            appWidgetManager.notifyAppWidgetViewDataChanged(intArrayOf(appWidgetId), R.id.widgetList)
+        }.onFailure { throwable ->
+            Log.e(TAG, "Failed to update widget options for id=$appWidgetId", throwable)
         }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+
         when (intent.action) {
             AppWidgetManager.ACTION_APPWIDGET_UPDATE,
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_DATE_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
             Intent.ACTION_TIME_TICK -> {
-                refreshAll(context)
-                ScheduleWidgetSnapshotProvider.refreshAll(context)
+                runCatching { refreshAll(context) }
+                    .onFailure { throwable -> Log.e(TAG, "Failed to refresh schedule widget", throwable) }
+                runCatching { ScheduleWidgetSnapshotProvider.refreshAll(context) }
+                    .onFailure { throwable -> Log.e(TAG, "Failed to refresh snapshot widget", throwable) }
             }
         }
-
-        super.onReceive(context, intent)
     }
 
     companion object {
+        private const val TAG = "ScheduleWidgetProvider"
+
         fun refreshAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, ScheduleWidgetProvider::class.java))
             if (ids.isEmpty()) return
 
             ids.forEach { appWidgetId ->
-                updateWidget(context, manager, appWidgetId)
+                runCatching {
+                    updateWidget(context, manager, appWidgetId)
+                }.onFailure { throwable ->
+                    Log.e(TAG, "Failed to refresh widget id=$appWidgetId", throwable)
+                }
             }
             manager.notifyAppWidgetViewDataChanged(ids, R.id.widgetList)
         }
@@ -63,29 +95,31 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.widget_schedule)
 
             val today = LocalDate.now()
-            val dayName = today.toCzechShortDay()
-            views.setTextViewText(R.id.widgetTitle, context.getString(R.string.widget_title_format, dayName))
+            views.setTextViewText(R.id.widgetTitle, today.toCzechShortDay().uppercase(Locale.ROOT))
+            views.setTextViewText(
+                R.id.widgetDate,
+                today.format(DateTimeFormatter.ofPattern("d.M.", Locale.ROOT))
+            )
             views.setTextViewText(
                 R.id.widgetNow,
-                context.getString(
-                    R.string.widget_now_format,
-                    LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT))
-                )
+                LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT))
             )
-
-            views.setImageViewResource(R.id.widgetOverlayLogo, R.drawable.logo_emblem)
 
             val openAppPending = buildOpenAppPendingIntent(context, 1000 + appWidgetId)
             views.setOnClickPendingIntent(R.id.widgetTitle, openAppPending)
             views.setOnClickPendingIntent(R.id.widgetNow, openAppPending)
             views.setOnClickPendingIntent(R.id.widgetHeader, openAppPending)
 
-            val serviceIntent = Intent(context, ScheduleWidgetService::class.java).apply {
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                data = android.net.Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+            runCatching {
+                val serviceIntent = Intent(context, ScheduleWidgetService::class.java).apply {
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                    data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+                }
+                views.setRemoteAdapter(R.id.widgetList, serviceIntent)
+                views.setEmptyView(R.id.widgetList, R.id.widgetEmpty)
+            }.onFailure { throwable ->
+                Log.e(TAG, "Failed to bind RemoteViewsService for widget id=$appWidgetId", throwable)
             }
-            views.setRemoteAdapter(R.id.widgetList, serviceIntent)
-            views.setEmptyView(R.id.widgetList, R.id.widgetEmpty)
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
@@ -137,5 +171,3 @@ internal fun LocalDate.toCzechLongDay(): String {
         DayOfWeek.SUNDAY -> "Ned\u011ble"
     }
 }
-
-

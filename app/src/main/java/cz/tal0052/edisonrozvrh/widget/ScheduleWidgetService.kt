@@ -1,4 +1,4 @@
-ï»¿package cz.tal0052.edisonrozvrh.widget
+package cz.tal0052.edisonrozvrh.widget
 
 import cz.tal0052.edisonrozvrh.R
 import cz.tal0052.edisonrozvrh.app.PositionedLesson
@@ -8,6 +8,7 @@ import cz.tal0052.edisonrozvrh.app.normalizeWeekPatternCode
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
@@ -66,7 +67,8 @@ private class ScheduleWidgetFactory(
                     rowStartMinutes = rowStart
                 )
             }
-        } catch (_: Throwable) {
+        } catch (throwable: Throwable) {
+            Log.e(TAG, "Failed to refresh schedule widget data", throwable)
             items = emptyList()
         }
     }
@@ -90,23 +92,24 @@ private class ScheduleWidgetFactory(
             val pxPerMinute = context.resources.displayMetrics.density * 0.72f
             val gapPx = (item.gapBeforeMinutes * pxPerMinute).roundToInt().coerceAtLeast(0)
             val durationMinutes = (item.positioned.endMinutes - item.positioned.startMinutes).coerceAtLeast(30)
-            val minBubblePx = dpToPx(context, 64)
+            val minBubblePx = dpToPx(context, 58)
             val durationPx = max((durationMinutes * pxPerMinute).roundToInt(), minBubblePx)
             val rowHeightPx = gapPx + durationPx
 
             views.setViewPadding(R.id.itemContentRow, 0, gapPx, 0, 0)
             views.setInt(R.id.widgetBubble, "setMinimumHeight", durationPx)
 
-            views.setTextViewText(R.id.itemTime, formatWidgetTime(item.positioned.shownTime, lesson.weekPattern))
-            views.setTextViewText(R.id.itemSubject, lesson.subject)
+            val (startLabel, endLabel) = splitWidgetTimeRange(item.positioned.shownTime)
+            views.setTextViewText(R.id.itemStartTime, startLabel)
+            views.setTextViewText(R.id.itemEndTime, endLabel)
 
-            if (item.teacherText.isBlank()) {
-                views.setViewVisibility(R.id.itemTeacher, View.GONE)
-            } else {
-                views.setViewVisibility(R.id.itemTeacher, View.VISIBLE)
-                views.setTextViewText(R.id.itemTeacher, item.teacherText)
+            val paritySuffix = when (normalizeWeekPatternCode(lesson.weekPattern)) {
+                "odd" -> " • L"
+                "even" -> " • S"
+                else -> ""
             }
-
+            views.setTextViewText(R.id.itemSubject, lesson.subject + paritySuffix)
+            views.setViewVisibility(R.id.itemTeacher, View.GONE)
             views.setTextViewText(R.id.itemRoom, item.roomText.ifBlank { "-" })
 
             val bubbleBg = when (lesson.type.trim().lowercase(Locale.ROOT)) {
@@ -123,7 +126,7 @@ private class ScheduleWidgetFactory(
             val rowEnd = item.positioned.endMinutes
 
             if (nowMinutes in rowStart..rowEnd) {
-                val lineHeightPx = dpToPx(context, 3)
+                val lineHeightPx = dpToPx(context, 2)
                 val rawLineY = ((nowMinutes - rowStart) * pxPerMinute).roundToInt()
                 val lineY = rawLineY.coerceIn(0, max(0, rowHeightPx - lineHeightPx))
 
@@ -135,7 +138,8 @@ private class ScheduleWidgetFactory(
             }
 
             views
-        } catch (_: Throwable) {
+        } catch (throwable: Throwable) {
+            Log.e(TAG, "Failed to bind widget item at position=$position", throwable)
             RemoteViews(context.packageName, R.layout.widget_schedule_item)
         }
     }
@@ -147,17 +151,19 @@ private class ScheduleWidgetFactory(
     override fun getItemId(position: Int): Long = position.toLong()
 
     override fun hasStableIds(): Boolean = false
+
+    companion object {
+        private const val TAG = "ScheduleWidgetService"
+    }
 }
 
 private fun dpToPx(context: Context, dp: Int): Int {
     return (dp * context.resources.displayMetrics.density).roundToInt()
 }
 
+private fun splitWidgetTimeRange(timeRange: String): Pair<String, String> {
+    val match = Regex("(\\d{1,2}:\\d{2})\\s*-\\s*(\\d{1,2}:\\d{2})").find(timeRange)
+    if (match == null) return timeRange to ""
 
-private fun formatWidgetTime(timeRange: String, weekPattern: String): String {
-    return when (normalizeWeekPatternCode(weekPattern)) {
-        "odd" -> "$timeRange â€¢ Lichy"
-        "even" -> "$timeRange â€¢ Sudy"
-        else -> timeRange
-    }
+    return match.groupValues[1] to match.groupValues[2]
 }

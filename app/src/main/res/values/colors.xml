@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Primary brand color used as the app primary color in both themes. -->
     <color name="app_brand_primary">#FF00A499</color>
@@ -90,7 +90,10 @@
     <color name="widget_header_gradient_end">#1F00A499</color>
     <!-- Widget header border color. -->
     <color name="widget_header_stroke">#5900A499</color>
-
+    <!-- Background of the current-time pill in widget header. -->
+    <color name="widget_time_pill_fill">#3300A499</color>
+    <!-- Border of the current-time pill in widget header. -->
+    <color name="widget_time_pill_stroke">#6600A499</color>
     <!-- Primary widget text color (titles/main labels). -->
     <color name="widget_text_primary">#FFECFAF8</color>
     <!-- Secondary widget text color (supporting labels). -->
