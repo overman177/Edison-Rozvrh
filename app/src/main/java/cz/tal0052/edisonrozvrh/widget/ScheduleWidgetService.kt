@@ -155,11 +155,9 @@ private fun dpToPx(context: Context, dp: Int): Int {
 
 
 private fun formatWidgetTime(timeRange: String, weekPattern: String): String {
-    val label = when (normalizeWeekPatternCode(weekPattern)) {
-        "odd" -> "Lichy"
-        "even" -> "Sudy"
-        else -> "Kazdy"
+    return when (normalizeWeekPatternCode(weekPattern)) {
+        "odd" -> "$timeRange • Lichy"
+        "even" -> "$timeRange • Sudy"
+        else -> timeRange
     }
-    return "$timeRange • $label"
 }
-

@@ -386,6 +386,7 @@ private fun GridLessonCard(item: PositionedLesson) {
                     )
                 }
 
+                if (weekParity != WeekParity.EVERY) {
                     Text(
                         text = weekParity.label,
                         fontSize = 11.sp,
@@ -403,6 +404,7 @@ private fun GridLessonCard(item: PositionedLesson) {
                             )
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -869,23 +871,3 @@ private fun toWeekParity(rawPattern: String): WeekParity {
         else -> WeekParity.EVERY
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
