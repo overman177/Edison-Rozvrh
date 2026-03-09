@@ -74,6 +74,40 @@ data class CurrentResultCheckpoint(
     val points: String,
     val status: String
 )
+
+data class StudyInfoData(
+    val personal: StudyPageData?,
+    val matriculation: StudyPageData?,
+    val admission: StudyPageData?
+)
+
+data class StudyPageData(
+    val title: String,
+    val sections: List<StudySection>,
+    val tables: List<StudyTable>,
+    val notes: List<StudyNote>
+)
+
+data class StudySection(
+    val title: String,
+    val fields: List<StudyField>
+)
+
+data class StudyField(
+    val label: String,
+    val value: String
+)
+
+data class StudyTable(
+    val title: String,
+    val columns: List<String>,
+    val rows: List<List<String>>
+)
+
+data class StudyNote(
+    val section: String,
+    val text: String
+)
 object EdisonParser {
 
     private data class ParsedRequest(
@@ -89,6 +123,17 @@ object EdisonParser {
     private const val WEEK_PATTERN_EVEN = "even"
     private const val WEEK_PATTERN_ODD = "odd"
 
+    fun parsePersonalStudyPage(html: String): StudyPageData? {
+        return parseStudyPage(html)
+    }
+
+    fun parseMatriculationStudyPage(html: String): StudyPageData? {
+        return parseStudyPage(html)
+    }
+
+    fun parseAdmissionStudyPage(html: String): StudyPageData? {
+        return parseStudyPage(html)
+    }
     fun parseCurrentResults(html: String): CurrentResultsData? {
         val doc = Jsoup.parse(html, "https://edison.sso.vsb.cz")
         val rows = doc.select("tbody.ui-datatable-data tr[data-ri]")
@@ -268,6 +313,129 @@ object EdisonParser {
             studyType = studyType,
             totalRows = totalRows,
             checkpoints = checkpoints
+        )
+    }
+
+    private fun parseStudyPage(html: String): StudyPageData? {
+        val doc = Jsoup.parse(html, "https://edison.sso.vsb.cz")
+        val root = doc.selectFirst("form.form")
+            ?: doc.selectFirst("form")
+            ?: doc.body()
+
+        val pageTitle = normalizeWhitespace(
+            doc.selectFirst("span.asa.page.title")?.text().orEmpty().ifBlank { doc.title() }
+        )
+        var currentSection = pageTitle.ifBlank { "Prehled" }
+
+        val sections = mutableListOf<StudySection>()
+        val tables = mutableListOf<StudyTable>()
+        val notes = mutableListOf<StudyNote>()
+
+        root.select("h2, h3, h4, div.detail2, table.dataTable, p").forEach { element ->
+            when {
+                element.tagName().equals("h2", ignoreCase = true) ||
+                    element.tagName().equals("h3", ignoreCase = true) ||
+                    element.tagName().equals("h4", ignoreCase = true) -> {
+                    val heading = normalizeWhitespace(element.text())
+                    if (heading.isNotBlank()) {
+                        currentSection = heading
+                    }
+                }
+
+                element.tagName().equals("div", ignoreCase = true) && element.hasClass("detail2") -> {
+                    val fields = parseStudyFields(element)
+                    if (fields.isNotEmpty()) {
+                        sections += StudySection(
+                            title = currentSection,
+                            fields = fields
+                        )
+                    }
+                }
+
+                element.tagName().equals("table", ignoreCase = true) &&
+                    element.classNames().contains("dataTable") -> {
+                    val table = parseStudyTable(element, currentSection)
+                    if (table != null) {
+                        tables += table
+                    }
+                }
+
+                element.tagName().equals("p", ignoreCase = true) -> {
+                    val text = normalizeWhitespace(element.text())
+                    if (text.isNotBlank()) {
+                        notes += StudyNote(
+                            section = currentSection,
+                            text = text
+                        )
+                    }
+                }
+            }
+        }
+
+        if (pageTitle.isBlank() && sections.isEmpty() && tables.isEmpty() && notes.isEmpty()) {
+            return null
+        }
+
+        return StudyPageData(
+            title = pageTitle.ifBlank { currentSection },
+            sections = sections,
+            tables = tables,
+            notes = notes
+        )
+    }
+
+    private fun parseStudyFields(block: Element): List<StudyField> {
+        return block.select(".label")
+            .mapNotNull { labelElement ->
+                val label = normalizeWhitespace(labelElement.text())
+                if (label.isBlank()) return@mapNotNull null
+
+                val value = normalizeWhitespace(
+                    labelElement.parent()
+                        ?.selectFirst(".value")
+                        ?.text()
+                        .orEmpty()
+                )
+
+                StudyField(
+                    label = label,
+                    value = value
+                )
+            }
+    }
+
+    private fun parseStudyTable(table: Element, fallbackTitle: String): StudyTable? {
+        val title = normalizeWhitespace(
+            table.selectFirst("caption")?.text().orEmpty()
+        ).ifBlank { fallbackTitle }
+
+        val columns = table.select("thead > tr")
+            .lastOrNull()
+            ?.select("th")
+            ?.map { normalizeWhitespace(it.text()) }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+
+        val rows = table.select("tbody > tr")
+            .mapNotNull { row ->
+                val values = row.select("> td")
+                    .map { cell ->
+                        val clean = cell.clone()
+                        clean.select("span.reflowColumn, span.reflowHide").remove()
+                        normalizeWhitespace(clean.text())
+                    }
+
+                if (values.any { it.isNotBlank() }) values else null
+            }
+
+        if (columns.isEmpty() && rows.isEmpty()) {
+            return null
+        }
+
+        return StudyTable(
+            title = title,
+            columns = columns,
+            rows = rows
         )
     }
     fun parseScheduleContext(html: String): ScheduleContext? {
@@ -682,18 +850,4 @@ object EdisonParser {
             .trim()
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

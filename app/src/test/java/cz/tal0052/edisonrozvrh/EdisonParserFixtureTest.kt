@@ -3,12 +3,15 @@ package cz.tal0052.edisonrozvrh
 import cz.tal0052.edisonrozvrh.app.Lesson
 import cz.tal0052.edisonrozvrh.app.buildPositionedLessonsForDay
 import cz.tal0052.edisonrozvrh.data.parser.EdisonParser
+import cz.tal0052.edisonrozvrh.data.parser.StudyPageData
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.text.Normalizer
+import java.util.Locale
 
 class EdisonParserFixtureTest {
 
@@ -249,6 +252,95 @@ class EdisonParserFixtureTest {
         assertEquals("bakalárské", parsed.studyType)
         assertTrue("Expected at least one summary row", parsed.totalRows.isNotEmpty())
         assertTrue("Expected at least three checkpoints", parsed.checkpoints.size >= 3)
+    }
+    @Test
+    fun parsePersonalStudyPage_fixture_parsesCoreFields() {
+        val file = sequenceOf(
+            File("fixtures/osobni_udaje.html"),
+            File("../fixtures/osobni_udaje.html")
+        ).firstOrNull { it.exists() } ?: File("fixtures/osobni_udaje.html")
+        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
+
+        val html = file.readText()
+        val page = EdisonParser.parsePersonalStudyPage(html)
+        assertNotNull("Personal study page is null", page)
+
+        val parsed = page!!
+        assertTrue("Expected parsed personal sections", parsed.sections.isNotEmpty())
+
+        val studentName = studyFieldValue(parsed, "jmeno")
+        assertTrue("Expected parsed student name", studentName.contains("Talman"))
+
+        val email = studyFieldValue(parsed, "email")
+        assertTrue("Expected parsed email", email.contains("@"))
+    }
+
+    @Test
+    fun parseMatriculationStudyPage_fixture_parsesSummaryAndStages() {
+        val file = sequenceOf(
+            File("fixtures/matricni_udaje.html"),
+            File("../fixtures/matricni_udaje.html")
+        ).firstOrNull { it.exists() } ?: File("fixtures/matricni_udaje.html")
+        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
+
+        val html = file.readText()
+        val page = EdisonParser.parseMatriculationStudyPage(html)
+        assertNotNull("Matriculation page is null", page)
+
+        val parsed = page!!
+        assertEquals("1", studyFieldValue(parsed, "pocet soubeznych studii"))
+        assertTrue("Expected at least one matriculation table", parsed.tables.isNotEmpty())
+
+        val firstRow = parsed.tables.first().rows.firstOrNull().orEmpty()
+        assertTrue("Expected stage row with start date", firstRow.any { it.contains("1.7.2024") })
+    }
+
+    @Test
+    fun parseAdmissionStudyPage_fixture_parsesStatusAndAverages() {
+        val file = sequenceOf(
+            File("fixtures/udaje_z_prijimaciho_rizeni.html"),
+            File("../fixtures/udaje_z_prijimaciho_rizeni.html")
+        ).firstOrNull { it.exists() } ?: File("fixtures/udaje_z_prijimaciho_rizeni.html")
+        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
+
+        val html = file.readText()
+        val page = EdisonParser.parseAdmissionStudyPage(html)
+        assertNotNull("Admission page is null", page)
+
+        val parsed = page!!
+        val applicationStatus = studyFieldValue(parsed, "stav prihlasky")
+        assertEquals("zapsan", normalizeStudyToken(applicationStatus))
+
+        val decision = studyFieldValue(parsed, "rozhodnuti")
+        assertTrue("Expected admission decision", normalizeStudyToken(decision).contains("prijat"))
+
+        val hasAverage = parsed.tables
+            .flatMap { table -> table.rows }
+            .flatten()
+            .any { value -> value.contains("1,64") }
+        assertTrue("Expected parsed average from admission table", hasAverage)
+    }
+
+    private fun studyFieldValue(page: StudyPageData, labelHint: String): String {
+        val hint = normalizeStudyToken(labelHint)
+
+        return page.sections.asSequence()
+            .flatMap { section -> section.fields.asSequence() }
+            .firstOrNull { field ->
+                field.value.isNotBlank() && normalizeStudyToken(field.label).contains(hint)
+            }
+            ?.value
+            .orEmpty()
+    }
+
+    private fun normalizeStudyToken(raw: String): String {
+        val noDiacritics = Normalizer.normalize(raw, Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+
+        return noDiacritics
+            .lowercase(Locale.ROOT)
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
     }
 }
 

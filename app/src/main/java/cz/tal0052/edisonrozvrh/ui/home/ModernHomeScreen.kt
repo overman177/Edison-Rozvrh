@@ -7,6 +7,9 @@ import cz.tal0052.edisonrozvrh.app.buildPositionedLessonsForDay
 import cz.tal0052.edisonrozvrh.app.normalizeWeekPatternCode
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultItem
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
+import cz.tal0052.edisonrozvrh.data.parser.StudyField
+import cz.tal0052.edisonrozvrh.data.parser.StudyInfoData
+import cz.tal0052.edisonrozvrh.data.parser.StudyPageData
 import cz.tal0052.edisonrozvrh.ui.design.LessonTypePalette
 import cz.tal0052.edisonrozvrh.ui.design.UiColorConfig
 
@@ -59,6 +62,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import java.text.Normalizer
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -66,7 +70,7 @@ import java.util.Locale
 import kotlinx.coroutines.delay
 
 private enum class HomeTab(val label: String) {
-    UNIVERSITY("Univerzita"),
+    UNIVERSITY("Studium"),
     RESULTS("V\u00fdsledky"),
     EXAMS("Zkou\u0161ky"),
     SCHEDULE("Rozvrh")
@@ -87,6 +91,7 @@ private enum class ResultSemesterFilter(val label: String) {
 fun ScheduleScreen(
     lessons: List<Lesson>,
     currentResults: CurrentResultsData?,
+    studyInfo: StudyInfoData?,
     onRefreshFromEdison: () -> Unit
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(HomeTab.SCHEDULE) }
@@ -107,9 +112,9 @@ fun ScheduleScreen(
         ) {
             when (selectedTab) {
                 HomeTab.SCHEDULE -> ScheduleGridTab(lessons)
-                HomeTab.UNIVERSITY -> PlaceholderTab(
-                    title = "Novinky",
-                    subtitle = "Harmonogram a d\u016fle\u017eit\u00e9 term\u00edny"
+                HomeTab.UNIVERSITY -> StudyInfoTab(
+                    studyInfo = studyInfo,
+                    onRefreshFromEdison = onRefreshFromEdison
                 )
 
                 HomeTab.RESULTS -> ResultsTab(
@@ -560,6 +565,335 @@ private fun lessonTypePaletteForGrid(type: String): LessonTypePalette {
     )
 }
 
+
+private data class StudySectionBlock(
+    val title: String,
+    val items: List<StudyField>
+)
+
+@Composable
+private fun StudyInfoTab(
+    studyInfo: StudyInfoData?,
+    onRefreshFromEdison: () -> Unit
+) {
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .verticalScroll(scrollState)
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Text(
+                text = "Studium",
+                fontSize = 42.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Button(
+                onClick = onRefreshFromEdison,
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                Text("Nacist z Edisonu")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (studyInfo == null) {
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f))
+            ) {
+                Text(
+                    text = "Data o studiu zatim nejsou nactena. Klikni na Nacist z Edisonu.",
+                    modifier = Modifier.padding(18.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 15.sp
+                )
+            }
+            return
+        }
+
+        val personalSections = remember(studyInfo.personal) { buildPersonalSections(studyInfo.personal) }
+        val matricSections = remember(studyInfo.matriculation) { buildMatriculationSections(studyInfo.matriculation) }
+        val admissionSections = remember(studyInfo.admission) { buildAdmissionSections(studyInfo.admission) }
+        val matricProgramTitle = remember(studyInfo.matriculation) {
+            studyInfo.matriculation
+                ?.sections
+                ?.firstOrNull { section -> section.title.contains("-") }
+                ?.title
+                .orEmpty()
+        }
+
+        if (personalSections.isNotEmpty()) {
+            StudyPageCard(
+                cardTitle = "Osobni udaje",
+                accent = MaterialTheme.colorScheme.primary,
+                sections = personalSections
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        if (matricSections.isNotEmpty()) {
+            StudyPageCard(
+                cardTitle = "Matricni udaje",
+                subtitle = matricProgramTitle,
+                accent = MaterialTheme.colorScheme.tertiary,
+                sections = matricSections
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        if (admissionSections.isNotEmpty()) {
+            StudyPageCard(
+                cardTitle = "Prijimaci rizeni",
+                accent = MaterialTheme.colorScheme.secondary,
+                sections = admissionSections
+            )
+        }
+
+        Spacer(modifier = Modifier.height(72.dp))
+    }
+}
+
+@Composable
+private fun StudyPageCard(
+    cardTitle: String,
+    subtitle: String = "",
+    accent: Color,
+    sections: List<StudySectionBlock>
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)
+        ),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.45f))
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = cardTitle,
+                color = accent,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            sections.forEachIndexed { index, section ->
+                if (index > 0) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
+                    )
+                }
+
+                Text(
+                    text = section.title,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                section.items.forEachIndexed { itemIndex, field ->
+                    StudyFieldLine(field)
+                    if (itemIndex < section.items.lastIndex) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyFieldLine(field: StudyField) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = field.label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            modifier = Modifier.weight(0.52f)
+        )
+        Text(
+            text = field.value,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Medium,
+            fontSize = 12.sp,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(0.48f)
+        )
+    }
+}
+
+private fun buildPersonalSections(page: StudyPageData?): List<StudySectionBlock> {
+    if (page == null) return emptyList()
+
+    return listOfNotNull(
+        sectionBlock(
+            title = "Kontakt",
+            selectedField("Jmeno", page.findFieldValue("jmeno")),
+            selectedField("Skolni email", page.findFieldValue("email")),
+            selectedField("Kontaktni email", page.findFieldValue("kontaktni email")),
+            selectedField("Telefon", page.findFieldValue("telefon"))
+        ),
+        sectionBlock(
+            title = "Zakladni udaje",
+            selectedField("Datum narozeni", page.findFieldValue("datum narozeni")),
+            selectedField("Pohlavi", page.findFieldValue("pohlavi")),
+            selectedField("Statni prislusnost", page.findFieldValue("statni prislusnost")),
+            selectedField("Misto narozeni", page.findFieldValue("misto narozeni"))
+        ),
+        sectionBlock(
+            title = "Adresa pobytu",
+            selectedField("Ulice", page.findFieldValue("ulice")),
+            selectedField("Obec", page.findFieldValue("obec")),
+            selectedField("PSC", page.findFieldValue("psc")),
+            selectedField("Stat", page.findFieldValue("stat"))
+        )
+    )
+}
+
+private fun buildMatriculationSections(page: StudyPageData?): List<StudySectionBlock> {
+    if (page == null) return emptyList()
+
+    return listOfNotNull(
+        sectionBlock(
+            title = "Stav studia",
+            selectedField("Datum overeni", page.findFieldValue("datum overeni")),
+            selectedField("Pocet soubeznych studii", page.findFieldValue("pocet soubeznych studii")),
+            selectedField("Odstudovana cast", page.findFieldValue("odstudovana cast studia")),
+            selectedField("Delka studia", page.findFieldValue("delka studia"))
+        ),
+        sectionBlock(
+            title = "Aktualni etapa",
+            selectedField("Udalost", page.findTableValue("udalost")),
+            selectedField("Platnost od", page.findTableValue("platnost od")),
+            selectedField("Forma studia", page.findTableValue("forma studia")),
+            selectedField("Stav", page.findTableValue("stav"))
+        ),
+        sectionBlock(
+            title = "Finance",
+            selectedField("Financovano CR", page.findFieldValue("financovano cr")),
+            selectedField("Platba za dalsi studium", page.findFieldValue("platba za dalsi studium od data")),
+            selectedField("Platba za delsi studium", page.findFieldValue("platba za delsi studium od data"))
+        )
+    )
+}
+
+private fun buildAdmissionSections(page: StudyPageData?): List<StudySectionBlock> {
+    if (page == null) return emptyList()
+
+    return listOfNotNull(
+        sectionBlock(
+            title = "Prihlaska",
+            selectedField("Stav prihlasky", page.findFieldValue("stav prihlasky")),
+            selectedField("Rozhodnuti", page.findFieldValue("rozhodnuti")),
+            selectedField("Body za prijimaci rizeni", page.findFieldValue("body za prijimaci rizeni")),
+            selectedField("Body navic", page.findFieldValue("body navic"))
+        ),
+        sectionBlock(
+            title = "Program",
+            selectedField("Program", page.findFieldValue("program")),
+            selectedField("Forma studia", page.findFieldValue("forma studia")),
+            selectedField("Typ studia", page.findFieldValue("typ studia")),
+            selectedField("Misto vyuky", page.findFieldValue("misto vyuky"))
+        ),
+        sectionBlock(
+            title = "Predchozi stredni skola",
+            selectedField("Nazev skoly", page.findFieldValue("nazev stredni skoly")),
+            selectedField("Obor", page.findFieldValue("nazev oboru")),
+            selectedField("Rok maturity", page.findFieldValue("rok mat")),
+            selectedField("Studijni prumer", page.findTableValue("celkovy"))
+        )
+    )
+}
+
+private fun sectionBlock(title: String, vararg fields: StudyField?): StudySectionBlock? {
+    val items = fields.filterNotNull()
+    if (items.isEmpty()) return null
+    return StudySectionBlock(title = title, items = items)
+}
+
+private fun selectedField(label: String, value: String): StudyField? {
+    val normalized = value.trim()
+    if (normalized.isBlank()) return null
+    return StudyField(label = label, value = normalized)
+}
+
+private fun StudyPageData.findFieldValue(vararg hints: String): String {
+    if (hints.isEmpty()) return ""
+    val normalizedHints = hints.map { normalizeStudyToken(it) }
+
+    return sections.asSequence()
+        .flatMap { section -> section.fields.asSequence() }
+        .firstOrNull { field ->
+            field.value.isNotBlank() && normalizedHints.any { hint ->
+                normalizeStudyToken(field.label).contains(hint)
+            }
+        }
+        ?.value
+        .orEmpty()
+}
+
+private fun StudyPageData.findTableValue(columnHint: String): String {
+    val normalizedHint = normalizeStudyToken(columnHint)
+
+    tables.forEach { table ->
+        if (table.rows.isEmpty()) return@forEach
+        val columnIndex = table.columns.indexOfFirst { column ->
+            normalizeStudyToken(column).contains(normalizedHint)
+        }
+        if (columnIndex >= 0 && table.rows.first().size > columnIndex) {
+            val value = table.rows.first()[columnIndex].trim()
+            if (value.isNotBlank()) {
+                return value
+            }
+        }
+    }
+
+    return ""
+}
+
+private fun normalizeStudyToken(raw: String): String {
+    val noDiacritics = Normalizer.normalize(raw, Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+
+    return noDiacritics
+        .lowercase(Locale.ROOT)
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+}
 @Composable
 private fun ResultsTab(
     currentResults: CurrentResultsData?,
@@ -1215,3 +1549,6 @@ private fun toWeekParity(rawPattern: String): WeekParity {
         else -> WeekParity.EVERY
     }
 }
+
+
+

@@ -72,6 +72,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import cz.tal0052.edisonrozvrh.R
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultItem
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
+import cz.tal0052.edisonrozvrh.data.parser.StudyInfoData
 import cz.tal0052.edisonrozvrh.map.resolveVsbRoomMapInfo
 import cz.tal0052.edisonrozvrh.ui.auth.EdisonLoginScreen
 import cz.tal0052.edisonrozvrh.ui.design.LessonTypePalette
@@ -134,6 +135,7 @@ data class StoredCurrentResultsData(
 
 private const val SCHEDULE_CACHE_VERSION = 8
 private const val RESULTS_CACHE_VERSION = 2
+private const val STUDY_INFO_CACHE_VERSION = 1
 private const val VSB_MAP_PAGE_URL = "https://mapy.vsb.cz/maps/"
 private const val VSB_MAP_LANG = "cs"
 private val roomMapUrlCache = mutableMapOf<String, String>()
@@ -206,6 +208,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val lessonsState = remember { mutableStateOf<List<Lesson>?>(null) }
                     val resultsState = remember { mutableStateOf<CurrentResultsData?>(null) }
+                    val studyInfoState = remember { mutableStateOf<StudyInfoData?>(null) }
                     val forceEdisonLoginState = remember { mutableStateOf(false) }
 
                     val cachedLessons = loadSchedule(this)
@@ -218,11 +221,19 @@ class MainActivity : ComponentActivity() {
                         resultsState.value = cachedResults
                     }
 
+                    val cachedStudyInfo = loadStudyInfo(this)
+                    if (cachedStudyInfo != null) {
+                        studyInfoState.value = cachedStudyInfo
+                    }
+
                     if (lessonsState.value == null || forceEdisonLoginState.value) {
-                        EdisonLoginScreen { lessons, currentResults ->
+                        EdisonLoginScreen { lessons, currentResults, studyInfo ->
                             lessonsState.value = lessons
                             if (currentResults != null) {
                                 resultsState.value = currentResults
+                            }
+                            if (studyInfo != null) {
+                                studyInfoState.value = studyInfo
                             }
                             forceEdisonLoginState.value = false
                         }
@@ -230,6 +241,7 @@ class MainActivity : ComponentActivity() {
                         ScheduleScreen(
                             lessons = lessonsState.value!!,
                             currentResults = resultsState.value,
+                            studyInfo = studyInfoState.value,
                             onRefreshFromEdison = { forceEdisonLoginState.value = true }
                         )
                     }
@@ -929,22 +941,38 @@ fun loadCurrentResults(context: Context): CurrentResultsData? {
     }
 }
 
+fun saveStudyInfo(context: Context, studyInfo: StudyInfoData) {
+    val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
 
+    prefs.edit {
+        putInt("study_info_version", STUDY_INFO_CACHE_VERSION)
+        putString("study_info_data", Gson().toJson(studyInfo))
+    }
+}
 
+fun loadStudyInfo(context: Context): StudyInfoData? {
+    val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
+    val version = prefs.getInt("study_info_version", 0)
+    if (version != STUDY_INFO_CACHE_VERSION) {
+        prefs.edit {
+            remove("study_info_data")
+        }
+        return null
+    }
 
+    val json = prefs.getString("study_info_data", null) ?: return null
 
-
-
-
-
-
-
-
-
-
-
-
-
+    return try {
+        val parsed = Gson().fromJson(json, StudyInfoData::class.java) ?: return null
+        if (parsed.personal == null && parsed.matriculation == null && parsed.admission == null) {
+            null
+        } else {
+            parsed
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
 
 
 

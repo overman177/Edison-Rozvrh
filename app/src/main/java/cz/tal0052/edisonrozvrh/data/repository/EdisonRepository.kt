@@ -1,9 +1,10 @@
-﻿package cz.tal0052.edisonrozvrh.data.repository
+package cz.tal0052.edisonrozvrh.data.repository
 
 import cz.tal0052.edisonrozvrh.app.Lesson
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
 import cz.tal0052.edisonrozvrh.data.parser.EdisonParser
 import cz.tal0052.edisonrozvrh.data.parser.ScheduleContext
+import cz.tal0052.edisonrozvrh.data.parser.StudyInfoData
 
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -14,6 +15,11 @@ object EdisonRepository {
     private const val SCHEDULE_URL = "https://edison.sso.vsb.cz/wps/myportal/student/rozvrh/rozvrh"
     private const val RESULTS_URL = "https://edison.sso.vsb.cz/wps/myportal/student/studium/aktualni-vysledky"
     private const val SPORTS_URL = "https://edison.sso.vsb.cz/wps/myportal/student/rozvrh/volba-sportu"
+    private const val PERSONAL_INFO_URL = "https://edison.sso.vsb.cz/wps/myportal/student/informace/osobni-udaje"
+    private const val MATRICULATION_INFO_URL =
+        "https://edison.sso.vsb.cz/wps/myportal/student/informace/osobni-udaje/matricni-udaje"
+    private const val ADMISSION_INFO_URL =
+        "https://edison.sso.vsb.cz/wps/myportal/student/informace/osobni-udaje/prijimaci-rizeni"
     private const val SPORTS_MY_ACTIVITIES_URL =
         "https://edison.sso.vsb.cz/wps/.cz.vsb.edison.edu.study.pass.portlet/jaxrs/sports/myactivities"
 
@@ -155,6 +161,28 @@ object EdisonRepository {
         }
     }
 
+
+    fun downloadStudyInfo(cookies: String?): StudyInfoData? {
+        if (cookies.isNullOrBlank()) return null
+
+        val personalHtml = downloadStudyInfoPage(cookies, PERSONAL_INFO_URL, SCHEDULE_URL)
+        val matriculationHtml = downloadStudyInfoPage(cookies, MATRICULATION_INFO_URL, PERSONAL_INFO_URL)
+        val admissionHtml = downloadStudyInfoPage(cookies, ADMISSION_INFO_URL, PERSONAL_INFO_URL)
+
+        val personal = personalHtml?.let { EdisonParser.parsePersonalStudyPage(it) }
+        val matriculation = matriculationHtml?.let { EdisonParser.parseMatriculationStudyPage(it) }
+        val admission = admissionHtml?.let { EdisonParser.parseAdmissionStudyPage(it) }
+
+        if (personal == null && matriculation == null && admission == null) {
+            return null
+        }
+
+        return StudyInfoData(
+            personal = personal,
+            matriculation = matriculation,
+            admission = admission
+        )
+    }
     private fun downloadSchedule(cookies: String): String? {
         val request = Request.Builder()
             .url(SCHEDULE_URL)
@@ -193,6 +221,19 @@ object EdisonRepository {
         }
     }
 
+
+    private fun downloadStudyInfoPage(cookies: String, url: String, referer: String): String? {
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Cookie", cookies)
+            .addHeader("Referer", referer)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            return response.body.string()
+        }
+    }
     private fun downloadCurrentResultDetail(cookies: String, detailUrl: String): String? {
         val request = Request.Builder()
             .url(detailUrl)
@@ -239,7 +280,4 @@ object EdisonRepository {
         }
     }
 }
-
-
-
 
