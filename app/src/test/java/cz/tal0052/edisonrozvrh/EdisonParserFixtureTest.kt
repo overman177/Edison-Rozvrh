@@ -1,4 +1,4 @@
-ï»¿package cz.tal0052.edisonrozvrh
+package cz.tal0052.edisonrozvrh
 
 import cz.tal0052.edisonrozvrh.app.Lesson
 import cz.tal0052.edisonrozvrh.app.buildPositionedLessonsForDay
@@ -90,10 +90,10 @@ class EdisonParserFixtureTest {
             [
               {
                 "sportTitle": "Volejbal",
-                "weekDayAbbrev": "Ãšt",
+                "weekDayAbbrev": "Út",
                 "scheduleWindowTimeText": "9:00-10:30",
                 "sportPlaceTitle": "Telocvicna Kolej A",
-                "teacherName": "KyselovÃ¡"
+                "teacherName": "Kyselová"
               }
             ]
         """.trimIndent()
@@ -185,11 +185,11 @@ class EdisonParserFixtureTest {
                       <th>8:00<br/>8:45</th>
                     </tr>
                     <tr>
-                      <th>PondÄ›lÃ­</th>
+                      <th>Pondelí</th>
                       <td>
                         <table class="actTable schedLecture">
                           <tr>
-                            <td><a href="#"><abbr>ALG</abbr></a><b>LichÃ½</b></td>
+                            <td><a href="#"><abbr>ALG</abbr></a><b>Lichý</b></td>
                             <td class="rightAlign topAlign" rowspan="2">
                               <a class="commandLink" onclick="return myfaces.oam.submitForm('f','f:detailLink',null,[['concreteActivityId','123']]);"></a>
                             </td>
@@ -229,7 +229,26 @@ class EdisonParserFixtureTest {
         assertEquals("even", bySubject["OOP"]?.weekPattern)
         assertEquals("every", bySubject["SWI"]?.weekPattern)
     }
+
+    @Test
+    fun parseCurrentResultDetail_fixture_parsesSubjectDetailSections() {
+        val file = sequenceOf(
+            File("fixtures/subject_detail.example.html"),
+            File("../fixtures/subject_detail.example.html")
+        ).firstOrNull { it.exists() } ?: File("fixtures/subject_detail.example.html")
+        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
+
+        val html = file.readText()
+        val detail = EdisonParser.parseCurrentResultDetail(html)
+        assertNotNull("Subject detail is null", detail)
+
+        val parsed = detail!!
+        assertEquals("2025/2026 letní", parsed.semester)
+        assertTrue("Program should be parsed", parsed.program.contains("PSS"))
+        assertEquals("prezencní", parsed.form)
+        assertEquals("bakalárské", parsed.studyType)
+        assertTrue("Expected at least one summary row", parsed.totalRows.isNotEmpty())
+        assertTrue("Expected at least three checkpoints", parsed.checkpoints.size >= 3)
+    }
 }
-
-
 

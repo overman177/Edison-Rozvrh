@@ -1,53 +1,138 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <!-- Primary brand color used as the app primary color in both themes. -->
+    <color name="app_brand_primary">#FF00A499</color>
+    <!-- Darker brand tone used in legacy header gradients. -->
+    <color name="app_brand_primary_dark">#FF007D76</color>
+    <!-- Deep brand tone used in legacy tab/header backgrounds. -->
+    <color name="app_brand_primary_deep">#FF063C39</color>
 
-    <!-- Shared lesson accents (app cards + widget cards) -->
+    <!-- Dark theme app background. -->
+    <color name="app_dark_background">#FF07181A</color>
+    <!-- Dark theme secondary accent color. -->
+    <color name="app_dark_secondary">#FF4CC3BB</color>
+    <!-- Dark theme tertiary accent color. -->
+    <color name="app_dark_tertiary">#FF86E0DA</color>
+    <!-- Dark theme surface color for cards/sheets. -->
+    <color name="app_dark_surface">#FF0E2528</color>
+    <!-- Dark theme elevated surface variant. -->
+    <color name="app_dark_surface_variant">#FF12363A</color>
+    <!-- Dark theme text/icon color on primary surfaces. -->
+    <color name="app_dark_on_primary">#FFFFFFFF</color>
+    <!-- Dark theme main text color on surfaces. -->
+    <color name="app_dark_on_surface">#FFE8F6F4</color>
+    <!-- Dark theme secondary text/icon color on surfaces. -->
+    <color name="app_dark_on_surface_variant">#FFB7D8D4</color>
+    <!-- Dark theme outline/border color. -->
+    <color name="app_dark_outline">#FF2B5A57</color>
+    <!-- Dark theme timeline/current-time indicator color. -->
+    <color name="app_dark_error">#FF00A499</color>
+
+    <!-- Light theme app background. -->
+    <color name="app_light_background">#FFF2FBFA</color>
+    <!-- Light theme secondary accent color. -->
+    <color name="app_light_secondary">#FF007D76</color>
+    <!-- Light theme tertiary accent color. -->
+    <color name="app_light_tertiary">#FF3CB9B0</color>
+    <!-- Light theme surface color for cards/sheets. -->
+    <color name="app_light_surface">#FFFFFFFF</color>
+    <!-- Light theme elevated surface variant. -->
+    <color name="app_light_surface_variant">#FFD8F0ED</color>
+    <!-- Light theme text/icon color on primary surfaces. -->
+    <color name="app_light_on_primary">#FFFFFFFF</color>
+    <!-- Light theme main text color on surfaces. -->
+    <color name="app_light_on_surface">#FF0A2E2B</color>
+    <!-- Light theme secondary text/icon color on surfaces. -->
+    <color name="app_light_on_surface_variant">#FF355C58</color>
+    <!-- Light theme outline/border color. -->
+    <color name="app_light_outline">#FF7CB8B2</color>
+    <!-- Light theme timeline/current-time indicator color. -->
+    <color name="app_light_error">#FF00A499</color>
+
+    <!-- Muted text in the legacy branded header. -->
+    <color name="app_header_text_muted">#FFD7F3F0</color>
+    <!-- Title text color on lesson cards. -->
+    <color name="app_card_title">#FFF1FAF9</color>
+    <!-- Meta text color on lesson cards (teacher/room). -->
+    <color name="app_card_meta">#FFC7DEDB</color>
+    <!-- Background tint of the small VSB glyph tile in legacy header. -->
+    <color name="app_logo_glyph_background">#17FFFFFF</color>
+    <!-- Legacy tab row container color. -->
+    <color name="app_legacy_tab_container">#D1063C39</color>
+    <!-- Legacy tab row divider color. -->
+    <color name="app_legacy_tab_divider">#4700A499</color>
+    <!-- Legacy brand header gradient start color. -->
+    <color name="app_header_gradient_start">#F2007D76</color>
+    <!-- Legacy brand header gradient end color. -->
+    <color name="app_header_gradient_end">#EB063C39</color>
+
+    <!-- Accent for seminar lesson type (cards + widgets). -->
     <color name="lesson_accent_cviko">#FF03A9F4</color>
+    <!-- Accent for lecture lesson type (cards + widgets). -->
     <color name="lesson_accent_prednaska">#FFF44336</color>
+    <!-- Accent for lab lesson type (cards + widgets). -->
     <color name="lesson_accent_lab">#FF4CAF50</color>
+    <!-- Accent for sport lesson type (cards + widgets). -->
     <color name="lesson_accent_sport">#FFFFEB3B</color>
+    <!-- Accent fallback for unknown lesson types. -->
     <color name="lesson_accent_default">#FF9CB5B3</color>
 
-    <!-- Widget palette: edit these in one place -->
+    <!-- Widget root gradient start color. -->
     <color name="widget_root_gradient_start">#FF0D2024</color>
+    <!-- Widget root gradient end color. -->
     <color name="widget_root_gradient_end">#FF08171B</color>
+    <!-- Widget root outer stroke color. -->
     <color name="widget_root_stroke">#FF2A5766</color>
 
+    <!-- Widget header gradient start color. -->
     <color name="widget_header_gradient_start">#3300A499</color>
+    <!-- Widget header gradient end color. -->
     <color name="widget_header_gradient_end">#1F00A499</color>
+    <!-- Widget header border color. -->
     <color name="widget_header_stroke">#5900A499</color>
 
+    <!-- Primary widget text color (titles/main labels). -->
     <color name="widget_text_primary">#FFECFAF8</color>
+    <!-- Secondary widget text color (supporting labels). -->
     <color name="widget_text_secondary">#FFAEE6E1</color>
+    <!-- Empty-state text color in widget. -->
     <color name="widget_text_empty">#FFB4D1CD</color>
 
-    <color name="widget_timeline_line">#FF20E666</color>
+    <!-- Current timeline color in list widget timeline. -->
+    <color name="widget_timeline_line">#FF00A499</color>
+    <!-- Vertical timeline rail color in list widget. -->
     <color name="widget_timeline_track">#FF2D5A66</color>
+    <!-- Timeline dot color in list widget. -->
     <color name="widget_timeline_dot">#FF7FD6CF</color>
 
+    <!-- Lesson time text color in list widget card. -->
     <color name="widget_item_time">#FFCDEBE7</color>
+    <!-- Lesson subject text color in list widget card. -->
     <color name="widget_item_subject">#FFF2FFFD</color>
+    <!-- Lesson room/teacher text color in list widget card. -->
     <color name="widget_item_room">#FFD0E8E4</color>
 
-    <!-- Widget card colors aligned with app card alpha (fill 17%, border 42%) -->
+    <!-- Fill color for seminar widget card. -->
     <color name="widget_card_cviko_fill">#2B03A9F4</color>
+    <!-- Border color for seminar widget card. -->
     <color name="widget_card_cviko_stroke">#6B03A9F4</color>
+    <!-- Fill color for lecture widget card. -->
     <color name="widget_card_prednaska_fill">#2BF44336</color>
+    <!-- Border color for lecture widget card. -->
     <color name="widget_card_prednaska_stroke">#6BF44336</color>
+    <!-- Fill color for lab widget card. -->
     <color name="widget_card_lab_fill">#2B4CAF50</color>
+    <!-- Border color for lab widget card. -->
     <color name="widget_card_lab_stroke">#6B4CAF50</color>
+    <!-- Fill color for sport widget card. -->
     <color name="widget_card_sport_fill">#2BFFEB3B</color>
+    <!-- Border color for sport widget card. -->
     <color name="widget_card_sport_stroke">#6BFFEB3B</color>
+    <!-- Fill color for default widget card. -->
     <color name="widget_card_default_fill">#2B9CB5B3</color>
+    <!-- Border color for default widget card. -->
     <color name="widget_card_default_stroke">#6B9CB5B3</color>
 
-    <!-- Snapshot widget accent -->
+    <!-- Accent text color for snapshot widget's highlighted lesson. -->
     <color name="widget_snapshot_accent">#FF2ED7CC</color>
 </resources>

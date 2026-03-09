@@ -1,4 +1,4 @@
-﻿package cz.tal0052.edisonrozvrh.data.parser
+package cz.tal0052.edisonrozvrh.data.parser
 
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
@@ -42,7 +42,8 @@ data class CurrentResultItem(
     val totalPoints: String,
     val grade: String,
     val ectsGrade: String,
-    val detailUrl: String
+    val detailUrl: String,
+    val detail: CurrentResultDetail? = null
 )
 
 data class CurrentResultsData(
@@ -50,7 +51,29 @@ data class CurrentResultsData(
     val warningNote: String,
     val items: List<CurrentResultItem>
 )
+data class CurrentResultDetail(
+    val semester: String,
+    val program: String,
+    val form: String,
+    val studyType: String,
+    val totalRows: List<CurrentResultTotalRow>,
+    val checkpoints: List<CurrentResultCheckpoint>
+)
 
+data class CurrentResultTotalRow(
+    val label: String,
+    val points: String,
+    val rating: String
+)
+
+data class CurrentResultCheckpoint(
+    val section: String,
+    val sectionRequirement: String,
+    val label: String,
+    val requirement: String,
+    val points: String,
+    val status: String
+)
 object EdisonParser {
 
     private data class ParsedRequest(
@@ -117,6 +140,136 @@ object EdisonParser {
         )
     }
 
+
+    fun parseCurrentResultDetail(html: String): CurrentResultDetail? {
+        val doc = Jsoup.parse(html, "https://edison.sso.vsb.cz")
+        val root = doc.selectFirst("#card-mysubject") ?: doc.body()
+
+        val detailTable = root.selectFirst("table.detail")
+        val detailValues = mutableMapOf<String, String>()
+        detailTable?.select("tr")?.forEach { row ->
+            val cells = row.select("> td")
+            var index = 0
+            while (index + 1 < cells.size) {
+                val label = normalizeToken(cells[index].text())
+                val value = normalizeWhitespace(cells[index + 1].text())
+                if (label.isNotBlank() && value.isNotBlank()) {
+                    detailValues[label] = value
+                }
+                index += 2
+            }
+        }
+
+        val summaryTable = root.selectFirst("table.dataTable")
+        val totalRows = summaryTable
+            ?.select("tr.total, tr.totalincl")
+            ?.mapNotNull { row ->
+                val cells = row.select("> td")
+                if (cells.isEmpty()) return@mapNotNull null
+
+                val label = normalizeWhitespace(cells.getOrNull(0)?.text().orEmpty())
+                val pointsCell: Element = if (cells.size > 3) cells[3] else cells[cells.lastIndex]
+                val ratingCell: Element = if (cells.size > 4) cells[4] else cells[cells.lastIndex]
+                val points = parseResultCell(pointsCell)
+                val rating = parseResultCell(ratingCell)
+                if (label.isBlank()) return@mapNotNull null
+
+                CurrentResultTotalRow(
+                    label = label,
+                    points = points,
+                    rating = rating
+                )
+            }
+            .orEmpty()
+
+        val sectionHeadings = root.select("h3, H3")
+            .filterNot { normalizeToken(it.text()).contains("celkove hodnoceni predmetu") }
+
+        val checkpoints = sectionHeadings.flatMap { heading ->
+            val sectionText = normalizeWhitespace(heading.text())
+            val sectionRequirement = extractBracketRequirement(sectionText)
+            val sectionName = sectionText.substringBefore(" (").trim()
+            val table = heading.nextElementSibling()
+                ?.let { sibling ->
+                    if (sibling.tagName().equals("table", ignoreCase = true) &&
+                        sibling.classNames().contains("dataTable")
+                    ) {
+                        sibling
+                    } else {
+                        sibling.nextElementSibling()?.takeIf {
+                            it.tagName().equals("table", ignoreCase = true) &&
+                                it.classNames().contains("dataTable")
+                        }
+                    }
+                }
+                ?: return@flatMap emptyList()
+
+            table.select("tbody > tr").mapNotNull { row ->
+                val cells = row.select("> td")
+                if (cells.size < 4) return@mapNotNull null
+
+                val firstCellText = normalizeWhitespace(cells[0].text())
+                if (firstCellText.isBlank()) return@mapNotNull null
+                if (normalizeToken(firstCellText).startsWith("in total for")) return@mapNotNull null
+
+                val requirement = extractBracketRequirement(firstCellText)
+                val label = firstCellText.substringBefore(" (").trim()
+                val pointsCell = cells[3]
+                val points = parseResultCell(pointsCell)
+                val status = when {
+                    pointsCell.selectFirst(".notenough") != null -> "nesplneno"
+                    points.isBlank() || points == "..." -> ""
+                    else -> "splneno"
+                }
+
+                CurrentResultCheckpoint(
+                    section = sectionName,
+                    sectionRequirement = sectionRequirement,
+                    label = label.ifBlank { firstCellText },
+                    requirement = requirement,
+                    points = points,
+                    status = status
+                )
+            }
+        }
+
+        val semester = detailValues.entries
+            .firstOrNull { it.key.contains("semestr") }
+            ?.value
+            .orEmpty()
+        val program = detailValues.entries
+            .firstOrNull { it.key.contains("program") }
+            ?.value
+            .orEmpty()
+        val form = detailValues.entries
+            .firstOrNull { it.key.contains("forma") }
+            ?.value
+            .orEmpty()
+        val studyType = detailValues.entries
+            .firstOrNull { it.key == "typ" || it.key.contains("typ") }
+            ?.value
+            .orEmpty()
+
+        if (
+            semester.isBlank() &&
+            program.isBlank() &&
+            form.isBlank() &&
+            studyType.isBlank() &&
+            totalRows.isEmpty() &&
+            checkpoints.isEmpty()
+        ) {
+            return null
+        }
+
+        return CurrentResultDetail(
+            semester = semester,
+            program = program,
+            form = form,
+            studyType = studyType,
+            totalRows = totalRows,
+            checkpoints = checkpoints
+        )
+    }
     fun parseScheduleContext(html: String): ScheduleContext? {
         val doc = Jsoup.parse(html, "https://edison.sso.vsb.cz")
         val scheduleTable: Element = doc.selectFirst("table.schedTable") ?: return null
@@ -514,6 +667,11 @@ object EdisonParser {
         }
     }
 
+
+    private fun extractBracketRequirement(text: String): String {
+        val match = Regex("\\(([^)]*)\\)").find(text) ?: return ""
+        return normalizeWhitespace(match.groupValues.getOrNull(1).orEmpty())
+    }
     private fun normalizeToken(raw: String): String {
         val withoutDiacritics = Normalizer.normalize(raw, Normalizer.Form.NFD)
             .replace(Regex("\\p{M}+"), "")
@@ -524,6 +682,7 @@ object EdisonParser {
             .trim()
     }
 }
+
 
 
 

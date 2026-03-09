@@ -1,4 +1,4 @@
-﻿@file:Suppress("SpellCheckingInspection")
+@file:Suppress("SpellCheckingInspection")
 
 package cz.tal0052.edisonrozvrh.app
 
@@ -136,10 +136,6 @@ private const val SCHEDULE_CACHE_VERSION = 8
 private const val RESULTS_CACHE_VERSION = 1
 private const val VSB_MAP_PAGE_URL = "https://mapy.vsb.cz/maps/"
 private const val VSB_MAP_LANG = "cs"
-private val VSB_BRAND = UiColorConfig.VsbBrand
-private val VSB_BRAND_DARK = UiColorConfig.VsbBrandDark
-private val VSB_BRAND_DEEP = UiColorConfig.VsbBrandDeep
-private val VSB_BG = UiColorConfig.VsbBackground
 private val roomMapUrlCache = mutableMapOf<String, String>()
 
 @Composable
@@ -155,8 +151,8 @@ private fun lessonTypePalette(type: String): LessonTypePalette {
     return LessonTypePalette(
         container = accent.copy(alpha = UiColorConfig.CardFillAlpha),
         border = accent.copy(alpha = UiColorConfig.CardBorderAlpha),
-        title = UiColorConfig.CardTitle,
-        meta = UiColorConfig.CardMeta
+        title = colorResource(R.color.app_card_title),
+        meta = colorResource(R.color.app_card_meta)
     )
 }
 
@@ -175,29 +171,31 @@ class MainActivity : ComponentActivity() {
 
             val colors = if (darkTheme) {
                 darkColorScheme(
-                    primary = VSB_BRAND,
-                    secondary = UiColorConfig.DarkSecondary,
-                    tertiary = UiColorConfig.DarkTertiary,
-                    background = VSB_BG,
-                    surface = UiColorConfig.DarkSurface,
-                    surfaceVariant = UiColorConfig.DarkSurfaceVariant,
-                    onPrimary = UiColorConfig.DarkOnPrimary,
-                    onSurface = UiColorConfig.DarkOnSurface,
-                    onSurfaceVariant = UiColorConfig.DarkOnSurfaceVariant,
-                    outline = UiColorConfig.DarkOutline
+                    primary = colorResource(R.color.app_brand_primary),
+                    secondary = colorResource(R.color.app_dark_secondary),
+                    tertiary = colorResource(R.color.app_dark_tertiary),
+                    background = colorResource(R.color.app_dark_background),
+                    surface = colorResource(R.color.app_dark_surface),
+                    surfaceVariant = colorResource(R.color.app_dark_surface_variant),
+                    onPrimary = colorResource(R.color.app_dark_on_primary),
+                    onSurface = colorResource(R.color.app_dark_on_surface),
+                    onSurfaceVariant = colorResource(R.color.app_dark_on_surface_variant),
+                    outline = colorResource(R.color.app_dark_outline),
+                    error = colorResource(R.color.app_dark_error)
                 )
             } else {
                 lightColorScheme(
-                    primary = VSB_BRAND,
-                    secondary = UiColorConfig.LightSecondary,
-                    tertiary = UiColorConfig.LightTertiary,
-                    background = UiColorConfig.LightBackground,
-                    surface = UiColorConfig.LightSurface,
-                    surfaceVariant = UiColorConfig.LightSurfaceVariant,
-                    onPrimary = UiColorConfig.DarkOnPrimary,
-                    onSurface = UiColorConfig.LightOnSurface,
-                    onSurfaceVariant = UiColorConfig.LightOnSurfaceVariant,
-                    outline = UiColorConfig.LightOutline
+                    primary = colorResource(R.color.app_brand_primary),
+                    secondary = colorResource(R.color.app_light_secondary),
+                    tertiary = colorResource(R.color.app_light_tertiary),
+                    background = colorResource(R.color.app_light_background),
+                    surface = colorResource(R.color.app_light_surface),
+                    surfaceVariant = colorResource(R.color.app_light_surface_variant),
+                    onPrimary = colorResource(R.color.app_dark_on_primary),
+                    onSurface = colorResource(R.color.app_light_on_surface),
+                    onSurfaceVariant = colorResource(R.color.app_light_on_surface_variant),
+                    outline = colorResource(R.color.app_light_outline),
+                    error = colorResource(R.color.app_light_error)
                 )
             }
 
@@ -315,12 +313,12 @@ private fun LegacyScheduleScreen(lessons: List<Lesson>) {
 
         TabRow(
             selectedTabIndex = selectedDayIndex.intValue,
-            containerColor = VSB_BRAND_DEEP.copy(alpha = 0.82f),
+            containerColor = colorResource(R.color.app_legacy_tab_container),
             contentColor = Color.White,
             divider = {
                 HorizontalDivider(
                     thickness = 0.5.dp,
-                    color = VSB_BRAND.copy(alpha = 0.28f)
+                    color = colorResource(R.color.app_legacy_tab_divider)
                 )
             }
         ) {
@@ -329,7 +327,7 @@ private fun LegacyScheduleScreen(lessons: List<Lesson>) {
                 Tab(
                     selected = selected,
                     selectedContentColor = Color.White,
-                    unselectedContentColor = UiColorConfig.DarkOnSurfaceVariant,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = {
                         scope.launch {
                             pagerState.animateScrollToPage(index)
@@ -374,8 +372,8 @@ private fun VsbBrandHeader(
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        VSB_BRAND_DARK.copy(alpha = 0.95f),
-                        VSB_BRAND_DEEP.copy(alpha = 0.92f)
+                        colorResource(R.color.app_header_gradient_start),
+                        colorResource(R.color.app_header_gradient_end)
                     )
                 )
             )
@@ -400,7 +398,7 @@ private fun VsbBrandHeader(
                     )
                     Text(
                         text = "UNIVERZITA OSTRAVA",
-                        color = UiColorConfig.HeaderTextMuted,
+                        color = colorResource(R.color.app_header_text_muted),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -410,7 +408,7 @@ private fun VsbBrandHeader(
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = dayLabel.uppercase(Locale.ROOT),
-                    color = UiColorConfig.HeaderTextMuted,
+                    color = colorResource(R.color.app_header_text_muted),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -432,7 +430,7 @@ private fun VsbLogoGlyph() {
             .width(34.dp)
             .height(30.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(alpha = 0.09f))
+            .background(colorResource(R.color.app_logo_glyph_background))
             .padding(horizontal = 4.dp, vertical = 4.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
@@ -447,7 +445,7 @@ private fun VsbLogoGlyph() {
                         .width(3.dp)
                         .height(h.dp)
                         .clip(CircleShape)
-                        .background(VSB_BRAND)
+                        .background(MaterialTheme.colorScheme.error)
                 )
             }
         }
@@ -583,7 +581,7 @@ private fun DayTimeline(
                             .offset(y = nowY)
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(VSB_BRAND)
+                            .background(MaterialTheme.colorScheme.error)
                     )
                 }
             }
@@ -976,6 +974,10 @@ fun loadCurrentResults(context: Context): CurrentResultsData? {
         null
     }
 }
+
+
+
+
 
 
 

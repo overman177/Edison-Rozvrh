@@ -139,7 +139,19 @@ object EdisonRepository {
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return null
             val html = response.body.string()
-            return EdisonParser.parseCurrentResults(html)
+            val parsed = EdisonParser.parseCurrentResults(html) ?: return null
+
+            val enrichedItems = parsed.items.map { item ->
+                if (item.detailUrl.isBlank()) {
+                    item
+                } else {
+                    val detailHtml = downloadCurrentResultDetail(cookies, item.detailUrl)
+                    val detail = detailHtml?.let { EdisonParser.parseCurrentResultDetail(it) }
+                    item.copy(detail = detail)
+                }
+            }
+
+            return parsed.copy(items = enrichedItems)
         }
     }
 
@@ -181,6 +193,18 @@ object EdisonRepository {
         }
     }
 
+    private fun downloadCurrentResultDetail(cookies: String, detailUrl: String): String? {
+        val request = Request.Builder()
+            .url(detailUrl)
+            .addHeader("Cookie", cookies)
+            .addHeader("Referer", RESULTS_URL)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            return response.body.string()
+        }
+    }
     private fun downloadActivityDetail(
         cookies: String,
         context: ScheduleContext,

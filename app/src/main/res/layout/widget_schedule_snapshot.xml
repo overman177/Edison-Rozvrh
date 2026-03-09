@@ -24,7 +24,7 @@
                 android:text="Pond&#283;l&#237;"
                 android:textColor="@color/widget_text_primary"
                 android:textStyle="bold"
-                android:textSize="22sp" />
+                android:textSize="18sp" />
 
             <TextView
                 android:id="@+id/snapshotNow"
@@ -34,7 +34,7 @@
                 android:layout_marginTop="5dp"
                 android:text="00:00"
                 android:textColor="@color/widget_text_secondary"
-                android:textSize="12sp"
+                android:textSize="10sp"
                 android:textStyle="bold" />
         </RelativeLayout>
 
@@ -63,7 +63,7 @@
                 android:text="VPS1"
                 android:textColor="@color/widget_snapshot_accent"
                 android:textStyle="bold"
-                android:textSize="26sp" />
+                android:textSize="20sp" />
 
             <TextView
                 android:id="@+id/snapshotPrimaryRoom"
@@ -75,7 +75,7 @@
                 android:maxLines="1"
                 android:text="POREB130"
                 android:textColor="@color/widget_snapshot_accent"
-                android:textSize="16sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -89,7 +89,7 @@
                 android:maxLines="1"
                 android:text="9:00 - 10:30"
                 android:textColor="@color/widget_snapshot_accent"
-                android:textSize="16sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
         </RelativeLayout>
 
@@ -107,7 +107,7 @@
                 android:maxLines="1"
                 android:text="| KYB POREC3"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="15sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -118,7 +118,7 @@
                 android:maxLines="1"
                 android:text="10:45"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="15sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
         </RelativeLayout>
 
@@ -136,7 +136,7 @@
                 android:maxLines="1"
                 android:text="| A/IV-FEI"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="15sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -147,7 +147,7 @@
                 android:maxLines="1"
                 android:text="14:15"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="15sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
         </RelativeLayout>
 
@@ -155,8 +155,8 @@
 
     <ImageView
         android:id="@+id/snapshotLogo"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
         android:layout_gravity="top|end"
         android:layout_marginTop="14dp"
         android:layout_marginEnd="14dp"

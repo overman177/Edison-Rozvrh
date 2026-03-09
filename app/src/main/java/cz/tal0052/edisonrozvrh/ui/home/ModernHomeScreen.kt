@@ -1,4 +1,4 @@
-﻿package cz.tal0052.edisonrozvrh.ui.home
+package cz.tal0052.edisonrozvrh.ui.home
 
 import cz.tal0052.edisonrozvrh.R
 import cz.tal0052.edisonrozvrh.app.Lesson
@@ -37,7 +37,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -46,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -56,10 +56,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalTime
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 private enum class HomeTab(val label: String) {
     UNIVERSITY("Univerzita"),
@@ -94,18 +99,7 @@ fun ScheduleScreen(
                 selectedTab = selectedTab,
                 onSelect = { selectedTab = it }
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { },
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.primary,
-                shape = CircleShape
-            ) {
-                Text("Q", fontWeight = FontWeight.Bold)
-            }
-        }
-    ) { innerPadding ->
+        }) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -201,16 +195,54 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
         dayOrder.associateWith { day -> buildPositionedLessonsForDay(lessons, day) }
     }
 
-    val timeSlots = remember(lessonsByDay) {
+    val timelineBoundaries = remember(lessonsByDay) {
         lessonsByDay.values
             .flatten()
-            .groupBy { it.startMinutes }
-            .toSortedMap()
-            .map { (start, rows) -> start to (rows.maxOfOrNull { it.endMinutes } ?: (start + 45)) }
+            .flatMap { listOf(it.startMinutes, it.endMinutes) }
+            .distinct()
+            .sorted()
     }
+    val timeSegments = remember(timelineBoundaries) {
+        timelineBoundaries.zipWithNext()
+            .filter { (start, end) -> end > start }
+    }
+    val isFifteenMinuteBreakSegment = remember(timeSegments) {
+        timeSegments.map { (start, end) ->
+            (end - start) == 15
+        }
+    }
+
 
     val horizontalScroll = rememberScrollState()
     val verticalScroll = rememberScrollState()
+    val nowMinutes = rememberCurrentTimeMinutes()
+    val isWeekday = remember(nowMinutes) {
+        val dayOfWeek = LocalDate.now().dayOfWeek
+        dayOfWeek >= DayOfWeek.MONDAY && dayOfWeek <= DayOfWeek.FRIDAY
+    }
+
+    val dayLabelWidth = 58.dp
+    val segmentSpacing = 8.dp
+    val minuteWidth = 2.2.dp
+    val lessonRowHeight = 134.dp
+    val dayRowSpacing = 10.dp
+    val segmentWidths = remember(timeSegments, minuteWidth) {
+        timeSegments.map { (start, end) -> (end - start) * minuteWidth.value }
+    }
+
+    val nowLineOffset = remember(timeSegments, nowMinutes, isWeekday, dayLabelWidth, segmentSpacing, minuteWidth) {
+        if (!isWeekday) {
+            null
+        } else {
+            calculateCurrentTimeLineOffset(
+                nowMinutes = nowMinutes,
+                timeSegments = timeSegments,
+                dayLabelWidth = dayLabelWidth,
+                segmentSpacing = segmentSpacing,
+                minuteWidth = minuteWidth
+            )
+        }
+    }
 
     val currentYear = LocalDate.now().year
     val currentMonth = LocalDate.now().monthValue
@@ -261,7 +293,7 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        if (timeSlots.isEmpty()) {
+        if (timeSegments.isEmpty()) {
             Card(
                 shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)),
@@ -287,58 +319,98 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
                     .horizontalScroll(horizontalScroll)
                     .verticalScroll(verticalScroll)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(modifier = Modifier.width(58.dp).height(52.dp))
-                        timeSlots.forEach { slot ->
-                            Column(modifier = Modifier.width(212.dp)) {
-                                Text(
-                                    text = minutesToLabel(slot.first),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 20.sp
-                                )
-                                Text(
-                                    text = minutesToLabel(slot.second),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = 15.sp
-                                )
+                val nowLineHeight = (lessonRowHeight * dayOrder.size) + (dayRowSpacing * (dayOrder.size - 1))
+                if (nowLineOffset != null) {
+                    Box(
+                        modifier = Modifier
+                            .padding(start = nowLineOffset, top = 64.dp)
+                            .width(2.dp)
+                            .height(nowLineHeight)
+                            .zIndex(2f)
+                            .background(
+                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.82f),
+                                shape = RoundedCornerShape(2.dp)
+                            )
+                    )
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(dayRowSpacing)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(segmentSpacing)) {
+                        Box(modifier = Modifier.width(dayLabelWidth).height(52.dp))
+                        timeSegments.forEachIndexed { index, segment ->
+                            Column(modifier = Modifier.width(segmentWidths[index].dp)) {
+                                if (!isFifteenMinuteBreakSegment[index]) {
+                                    Text(
+                                        text = minutesToLabel(segment.first),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 15.sp
+                                    )
+                                    Text(
+                                        text = minutesToLabel(segment.second),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 11.sp
+                                    )
+                                }
                             }
                         }
                     }
 
                     dayOrder.forEach { day ->
-                        val positioned = lessonsByDay[day].orEmpty()
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val positioned = lessonsByDay[day].orEmpty().sortedBy { it.startMinutes }
+                        val byStart = positioned.associateBy { it.startMinutes }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(segmentSpacing)) {
                             Box(
                                 modifier = Modifier
-                                    .width(58.dp)
-                                    .height(146.dp),
+                                    .width(dayLabelWidth)
+                                    .height(lessonRowHeight),
                                 contentAlignment = Alignment.CenterStart
                             ) {
                                 Text(
                                     text = dayLabels[day].orEmpty(),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontWeight = FontWeight.SemiBold,
-                                    fontSize = 24.sp
+                                    fontSize = 22.sp
                                 )
                             }
 
-                            timeSlots.forEach { slot ->
-                                val item = positioned.firstOrNull { it.startMinutes == slot.first }
+                            var segmentIndex = 0
+                            while (segmentIndex < timeSegments.size) {
+                                val segmentStart = timeSegments[segmentIndex].first
+                                val item = byStart[segmentStart]
+
                                 if (item != null) {
-                                    GridLessonCard(item)
+                                    var span = 0
+                                    var widthValue = 0f
+                                    var scanIndex = segmentIndex
+                                    while (scanIndex < timeSegments.size && timeSegments[scanIndex].first < item.endMinutes) {
+                                        widthValue += segmentWidths[scanIndex]
+                                        span++
+                                        scanIndex++
+                                    }
+                                    if (span > 1) {
+                                        widthValue += segmentSpacing.value * (span - 1)
+                                    }
+
+                                    GridLessonCard(
+                                        item = item,
+                                        cardWidth = widthValue.dp,
+                                        cardHeight = lessonRowHeight
+                                    )
+                                    segmentIndex += span.coerceAtLeast(1)
                                 } else {
                                     Box(
                                         modifier = Modifier
-                                            .width(212.dp)
-                                            .height(146.dp)
+                                            .width(segmentWidths[segmentIndex].dp)
+                                            .height(lessonRowHeight)
                                             .background(
                                                 color = MaterialTheme.colorScheme.background.copy(alpha = 0.45f),
                                                 shape = RoundedCornerShape(16.dp)
                                             )
                                     )
+                                    segmentIndex++
                                 }
                             }
                         }
@@ -350,14 +422,18 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
 }
 
 @Composable
-private fun GridLessonCard(item: PositionedLesson) {
+private fun GridLessonCard(
+    item: PositionedLesson,
+    cardWidth: Dp,
+    cardHeight: Dp
+) {
     val palette = lessonTypePaletteForGrid(item.lesson.type)
     val weekParity = remember(item.lesson.weekPattern) {
         toWeekParity(item.lesson.weekPattern)
     }
 
     Card(
-        modifier = Modifier.width(212.dp).height(146.dp),
+        modifier = Modifier.width(cardWidth).height(cardHeight),
         colors = CardDefaults.cardColors(containerColor = palette.container),
         border = BorderStroke(1.dp, palette.border),
         shape = RoundedCornerShape(16.dp)
@@ -463,8 +539,8 @@ private fun lessonTypePaletteForGrid(type: String): LessonTypePalette {
     return LessonTypePalette(
         container = accent.copy(alpha = UiColorConfig.CardFillAlpha),
         border = accent.copy(alpha = UiColorConfig.CardBorderAlpha),
-        title = UiColorConfig.CardTitle,
-        meta = UiColorConfig.CardMeta
+        title = colorResource(R.color.app_card_title),
+        meta = colorResource(R.color.app_card_meta)
     )
 }
 
@@ -660,6 +736,13 @@ private fun ResultItemCard(
     item: CurrentResultItem,
     onOpenDetail: () -> Unit
 ) {
+    var isDetailExpanded by rememberSaveable(
+        item.semesterCode,
+        item.subjectNumber,
+        item.subjectShortcut
+    ) { mutableStateOf(false) }
+    val detail = item.detail
+
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
@@ -680,17 +763,28 @@ private fun ResultItemCard(
                     fontSize = 22.sp
                 )
 
-                Text(
-                    text = displayGrade(item.grade),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .background(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                             shape = RoundedCornerShape(10.dp)
                         )
                         .padding(horizontal = 10.dp, vertical = 4.dp)
-                )
+                ) {
+                    Text(
+                        text = "Znamka",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = displayGrade(item.grade),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -723,20 +817,31 @@ private fun ResultItemCard(
                 ResultValueChip("Celkem", item.totalPoints)
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            if (detail != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (isDetailExpanded) "Skryt detail predmetu" else "Zobrazit detail predmetu",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable { isDetailExpanded = !isDetailExpanded }
+                )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ResultValueChip("Znamka", displayGrade(item.grade))
+                if (isDetailExpanded) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ResultDetailBlock(detail = detail)
+                }
+            }
 
-                Spacer(modifier = Modifier.weight(1f))
-
-                if (item.detailUrl.isNotBlank()) {
+            if (item.detailUrl.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = "Detail",
+                        text = "Web detail",
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp,
@@ -745,6 +850,111 @@ private fun ResultItemCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ResultDetailBlock(detail: cz.tal0052.edisonrozvrh.data.parser.CurrentResultDetail) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        if (detail.semester.isNotBlank()) {
+            ResultDetailLine(label = "Semestr", value = detail.semester)
+        }
+        if (detail.program.isNotBlank()) {
+            ResultDetailLine(label = "Program", value = detail.program)
+        }
+        if (detail.form.isNotBlank()) {
+            ResultDetailLine(label = "Forma", value = detail.form)
+        }
+        if (detail.studyType.isNotBlank()) {
+            ResultDetailLine(label = "Typ", value = detail.studyType)
+        }
+
+        if (detail.totalRows.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Souhrn",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp
+            )
+            detail.totalRows.forEach { row ->
+                ResultDetailLine(
+                    label = row.label.ifBlank { "Polozka" },
+                    value = listOf(row.points, row.rating)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" | ")
+                        .ifBlank { "-" }
+                )
+            }
+        }
+
+        if (detail.checkpoints.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Dilci podminky",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp
+            )
+            detail.checkpoints.forEach { checkpoint ->
+                val checkpointLabel = buildString {
+                    append(checkpoint.label)
+                    if (checkpoint.requirement.isNotBlank()) {
+                        append(" (")
+                        append(checkpoint.requirement)
+                        append(")")
+                    }
+                }.ifBlank { "Polozka" }
+
+                val checkpointValue = listOf(
+                    checkpoint.points.takeIf { it.isNotBlank() } ?: "...",
+                    checkpoint.status.takeIf { it.isNotBlank() }
+                ).joinToString(" | ")
+
+                ResultDetailLine(
+                    label = checkpointLabel,
+                    value = checkpointValue
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultDetailLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = "$label:",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(0.46f)
+        )
+        Text(
+            text = value,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(0.54f)
+        )
     }
 }
 
@@ -864,6 +1074,61 @@ private fun minutesToLabel(totalMinutes: Int): String {
     return String.format(Locale.ROOT, "%d:%02d", h, m)
 }
 
+@Composable
+private fun rememberCurrentTimeMinutes(): Int {
+    val currentMinutes by produceState(initialValue = LocalTime.now().hour * 60 + LocalTime.now().minute) {
+        while (true) {
+            val now = LocalTime.now()
+            value = now.hour * 60 + now.minute
+            val millisUntilNextMinute =
+                ((60 - now.second) * 1000L - (now.nano / 1_000_000L)).coerceIn(400L, 60_000L)
+            delay(millisUntilNextMinute)
+        }
+    }
+    return currentMinutes
+}
+
+private fun calculateCurrentTimeLineOffset(
+    nowMinutes: Int,
+    timeSegments: List<Pair<Int, Int>>,
+    dayLabelWidth: Dp,
+    segmentSpacing: Dp,
+    minuteWidth: Dp
+): Dp? {
+    if (timeSegments.isEmpty()) return null
+    if (nowMinutes < timeSegments.first().first || nowMinutes > timeSegments.last().second) return null
+
+    val labelWidth = dayLabelWidth.value
+    val spacing = segmentSpacing.value
+    val minuteWidthValue = minuteWidth.value
+    var cursorX = labelWidth + spacing
+
+    for (index in timeSegments.indices) {
+        val (startMinutes, endMinutes) = timeSegments[index]
+        val segmentDuration = (endMinutes - startMinutes).coerceAtLeast(1)
+        val segmentWidth = segmentDuration * minuteWidthValue
+
+        if (nowMinutes in startMinutes..endMinutes) {
+            val fraction = ((nowMinutes - startMinutes).toFloat() / segmentDuration.toFloat()).coerceIn(0f, 1f)
+            return (cursorX + segmentWidth * fraction).dp
+        }
+
+        cursorX += segmentWidth
+
+        if (index < timeSegments.lastIndex) {
+            val nextStart = timeSegments[index + 1].first
+            if (nowMinutes > endMinutes && nowMinutes < nextStart) {
+                val gapDuration = (nextStart - endMinutes).coerceAtLeast(1)
+                val gapFraction = ((nowMinutes - endMinutes).toFloat() / gapDuration.toFloat()).coerceIn(0f, 1f)
+                return (cursorX + spacing * gapFraction).dp
+            }
+            cursorX += spacing
+        }
+    }
+
+    return null
+}
+
 private fun toWeekParity(rawPattern: String): WeekParity {
     return when (normalizeWeekPatternCode(rawPattern)) {
         "odd" -> WeekParity.ODD
@@ -871,3 +1136,11 @@ private fun toWeekParity(rawPattern: String): WeekParity {
         else -> WeekParity.EVERY
     }
 }
+
+
+
+
+
+
+
+
