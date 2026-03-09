@@ -22,3 +22,7 @@ local.properties
 /.idea
 
 /fixtures/
+key.properties
+*.jks
+*.keystore
+/keystore/
