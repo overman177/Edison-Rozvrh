@@ -14,15 +14,36 @@ import java.text.Normalizer
 import java.util.Locale
 
 class EdisonParserFixtureTest {
+    private fun loadFixture(name: String): String {
+        val file = sequenceOf(
+            File("fixtures/$name"),
+            File("../fixtures/$name")
+        ).firstOrNull { it.exists() } ?: error("Fixture not found: $name")
+
+        return file.readText()
+    }
+
     @Test
     fun parseWebCredit_fixture_parsesBalanceAndCurrency() {
-        val file = sequenceOf(
-            File("fixtures/WebCredit.html"),
-            File("../fixtures/WebCredit.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/WebCredit.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = """
+            <html>
+              <body>
+                <script>
+                  window.wkIndexModel = {
+                    "model": {
+                      "currency": {
+                        "code": "CZK",
+                        "symbol": "Kc"
+                      },
+                      "balance": {
+                        "balance": 511.30
+                      }
+                    }
+                  };
+                </script>
+              </body>
+            </html>
+        """.trimIndent()
         val webCredit = EdisonParser.parseWebCredit(html)
 
         assertNotNull("WebCredit data is null", webCredit)
@@ -32,13 +53,7 @@ class EdisonParserFixtureTest {
 
     @Test
     fun parseSchedulePreview_fixture_hasAllActivities() {
-        val file = sequenceOf(
-            File("fixtures/schedule_preview.html"),
-            File("../fixtures/schedule_preview.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/schedule_preview.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = loadFixture("schedule_preview.html")
         val context = EdisonParser.parseScheduleContext(html)
         assertNotNull("Schedule context is null", context)
 
@@ -48,13 +63,7 @@ class EdisonParserFixtureTest {
 
     @Test
     fun buildPositionedLessonsForDay_fixture_preservesAllSubjectsPerDay() {
-        val file = sequenceOf(
-            File("fixtures/schedule_preview.html"),
-            File("../fixtures/schedule_preview.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/schedule_preview.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = loadFixture("schedule_preview.html")
         val context = EdisonParser.parseScheduleContext(html)
         assertNotNull("Schedule context is null", context)
 
@@ -86,13 +95,7 @@ class EdisonParserFixtureTest {
     }
     @Test
     fun parseSportActivities_fixture_parsesMyActivitiesTable() {
-        val file = sequenceOf(
-            File("fixtures/sports_preview.html"),
-            File("../fixtures/sports_preview.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/sports_preview.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = loadFixture("sports_preview.html")
         val activities = EdisonParser.parseSportActivities(html)
 
         assertTrue("Expected at least one sport activity", activities.isNotEmpty())
@@ -108,10 +111,10 @@ class EdisonParserFixtureTest {
             [
               {
                 "sportTitle": "Volejbal",
-                "weekDayAbbrev": "�t",
+                "weekDayAbbrev": "Ut",
                 "scheduleWindowTimeText": "9:00-10:30",
                 "sportPlaceTitle": "Telocvicna Kolej A",
-                "teacherName": "Kyselov�"
+                "teacherName": "Kyselova"
               }
             ]
         """.trimIndent()
@@ -128,13 +131,7 @@ class EdisonParserFixtureTest {
 
     @Test
     fun parseCurrentResults_fixture_parsesRowsAndSummary() {
-        val file = sequenceOf(
-            File("fixtures/results_preview.html"),
-            File("../fixtures/results_preview.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/results_preview.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = loadFixture("results_preview.html")
         val currentResults = EdisonParser.parseCurrentResults(html)
 
         assertNotNull("Current results are null", currentResults)
@@ -145,13 +142,7 @@ class EdisonParserFixtureTest {
 
     @Test
     fun parseCurrentResults_fixture_parsesIconAndNumericCells() {
-        val file = sequenceOf(
-            File("fixtures/results_preview.html"),
-            File("../fixtures/results_preview.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/results_preview.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = loadFixture("results_preview.html")
         val currentResults = EdisonParser.parseCurrentResults(html)
         assertNotNull("Current results are null", currentResults)
 
@@ -171,13 +162,7 @@ class EdisonParserFixtureTest {
     }
     @Test
     fun parseSchedulePreview_fixture_parsesWeekPatternHints() {
-        val file = sequenceOf(
-            File("fixtures/schedule_preview.html"),
-            File("../fixtures/schedule_preview.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/schedule_preview.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = loadFixture("schedule_preview.html")
         val context = EdisonParser.parseScheduleContext(html)
         assertNotNull("Schedule context is null", context)
 
@@ -203,11 +188,11 @@ class EdisonParserFixtureTest {
                       <th>8:00<br/>8:45</th>
                     </tr>
                     <tr>
-                      <th>Pondel�</th>
+                      <th>Pondeli</th>
                       <td>
                         <table class="actTable schedLecture">
                           <tr>
-                            <td><a href="#"><abbr>ALG</abbr></a><b>Lich�</b></td>
+                            <td><a href="#"><abbr>ALG</abbr></a><b>Liche</b></td>
                             <td class="rightAlign topAlign" rowspan="2">
                               <a class="commandLink" onclick="return myfaces.oam.submitForm('f','f:detailLink',null,[['concreteActivityId','123']]);"></a>
                             </td>
@@ -232,13 +217,7 @@ class EdisonParserFixtureTest {
     }
     @Test
     fun parseSudyLichyFixture_parsesAllWeekPatterns() {
-        val file = sequenceOf(
-            File("fixtures/sudy_lichy_example.html"),
-            File("../fixtures/sudy_lichy_example.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/sudy_lichy_example.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = loadFixture("sudy_lichy_example.html")
         val context = EdisonParser.parseScheduleContext(html)
         assertNotNull("Schedule context should be parsed", context)
 
@@ -250,33 +229,21 @@ class EdisonParserFixtureTest {
 
     @Test
     fun parseCurrentResultDetail_fixture_parsesSubjectDetailSections() {
-        val file = sequenceOf(
-            File("fixtures/subject_detail.example.html"),
-            File("../fixtures/subject_detail.example.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/subject_detail.example.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = loadFixture("subject_detail.example.html")
         val detail = EdisonParser.parseCurrentResultDetail(html)
         assertNotNull("Subject detail is null", detail)
 
         val parsed = detail!!
-        assertEquals("2025/2026 letn�", parsed.semester)
+        assertEquals("2025 2026 letni", normalizeStudyToken(parsed.semester))
         assertTrue("Program should be parsed", parsed.program.contains("PSS"))
-        assertEquals("prezencn�", parsed.form)
-        assertEquals("bakal�rsk�", parsed.studyType)
+        assertEquals("prezencni", normalizeStudyToken(parsed.form))
+        assertEquals("bakalarsky", normalizeStudyToken(parsed.studyType))
         assertTrue("Expected at least one summary row", parsed.totalRows.isNotEmpty())
         assertTrue("Expected at least three checkpoints", parsed.checkpoints.size >= 3)
     }
     @Test
     fun parsePersonalStudyPage_fixture_parsesCoreFields() {
-        val file = sequenceOf(
-            File("fixtures/osobni_udaje.html"),
-            File("../fixtures/osobni_udaje.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/osobni_udaje.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = loadFixture("osobni_udaje.html")
         val page = EdisonParser.parsePersonalStudyPage(html)
         assertNotNull("Personal study page is null", page)
 
@@ -292,13 +259,7 @@ class EdisonParserFixtureTest {
 
     @Test
     fun parseMatriculationStudyPage_fixture_parsesSummaryAndStages() {
-        val file = sequenceOf(
-            File("fixtures/matricni_udaje.html"),
-            File("../fixtures/matricni_udaje.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/matricni_udaje.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = loadFixture("matricni_udaje.html")
         val page = EdisonParser.parseMatriculationStudyPage(html)
         assertNotNull("Matriculation page is null", page)
 
@@ -312,13 +273,7 @@ class EdisonParserFixtureTest {
 
     @Test
     fun parseAdmissionStudyPage_fixture_parsesStatusAndAverages() {
-        val file = sequenceOf(
-            File("fixtures/udaje_z_prijimaciho_rizeni.html"),
-            File("../fixtures/udaje_z_prijimaciho_rizeni.html")
-        ).firstOrNull { it.exists() } ?: File("fixtures/udaje_z_prijimaciho_rizeni.html")
-        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
-
-        val html = file.readText()
+        val html = loadFixture("udaje_z_prijimaciho_rizeni.html")
         val page = EdisonParser.parseAdmissionStudyPage(html)
         assertNotNull("Admission page is null", page)
 
@@ -358,4 +313,3 @@ class EdisonParserFixtureTest {
             .trim()
     }
 }
-

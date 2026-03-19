@@ -3,6 +3,7 @@ package cz.tal0052.edisonrozvrh.widget
 import cz.tal0052.edisonrozvrh.R
 import cz.tal0052.edisonrozvrh.app.MainActivity
 import cz.tal0052.edisonrozvrh.app.loadWebCredit
+import cz.tal0052.edisonrozvrh.app.maybeSyncWebCreditInBackground
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -77,6 +78,8 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, ScheduleWidgetProvider::class.java))
             if (ids.isEmpty()) return
+
+            maybeSyncWebCreditInBackground(context)
 
             ids.forEach { appWidgetId ->
                 runCatching {

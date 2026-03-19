@@ -1,7 +1,6 @@
 package cz.tal0052.edisonrozvrh.ui.auth
 
 import android.annotation.SuppressLint
-import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -25,7 +24,7 @@ import org.json.JSONObject
 private const val EDISON_PORTAL_URL = "https://edison.sso.vsb.cz/wps/myportal"
 private const val WEB_CREDIT_MENU_URL = "https://stravovani.vsb.cz/webkredit/Ordering/Menu"
 private const val WEB_CREDIT_TIMEOUT_MS = 20000L
-private const val WEB_CREDIT_LOG_TAG = "WebCreditSync"
+private const val WEB_CREDIT_INTERACTIVE_TIMEOUT_MS = 180000L
 private const val WEB_CREDIT_MODEL_SCRIPT = """
 (function() {
   try {
@@ -63,26 +62,6 @@ private fun extractWebCreditSsoUrl(json: String?): String? {
     }.getOrNull()
 }
 
-private fun debugWebCreditBalanceNode(json: String?): String {
-    if (json.isNullOrBlank()) return "null"
-    return runCatching {
-        val root = JSONObject(json)
-        val model = root.optJSONObject("model") ?: root
-        model.opt("balance")?.toString().orEmpty().ifBlank { "missing" }
-    }.getOrElse { error -> "json_error:${error.javaClass.simpleName}" }
-}
-
-private fun debugWebCreditHtmlSnippet(html: String?): String {
-    if (html.isNullOrBlank()) return "null"
-    val marker = "window.wkIndexModel"
-    val index = html.indexOf(marker)
-    if (index < 0) return "marker_missing"
-
-    val end = minOf(html.length, index + 300)
-    return html.substring(index, end)
-        .replace(Regex("\\s+"), " ")
-}
-
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun WebCreditSyncView(
@@ -104,13 +83,24 @@ fun WebCreditSyncView(
                 var authAttempted = false
                 var pageVersion = 0
                 var authRequiredReported = false
+                lateinit var timeoutRunnable: Runnable
 
-                fun finish(reason: String) {
+                fun finish() {
                     if (resolved) return
                     resolved = true
-                    Log.d(WEB_CREDIT_LOG_TAG, "finish: $reason")
+                    removeCallbacks(timeoutRunnable)
                     stopLoading()
                     latestOnFinished()
+                }
+
+                fun scheduleTimeout(interactive: Boolean = authRequiredReported && allowInteractiveAuth) {
+                    removeCallbacks(timeoutRunnable)
+                    val timeoutMs = if (interactive) {
+                        WEB_CREDIT_INTERACTIVE_TIMEOUT_MS
+                    } else {
+                        WEB_CREDIT_TIMEOUT_MS
+                    }
+                    postDelayed(timeoutRunnable, timeoutMs)
                 }
 
                 fun tryHtmlFallback() {
@@ -120,21 +110,12 @@ fun WebCreditSyncView(
                         if (resolved) return@evaluateJavascript
 
                         val html = decodeEvaluateJavascriptString(htmlResult)
-                        Log.d(WEB_CREDIT_LOG_TAG, "html callback length=${html?.length ?: 0}")
-                        Log.d(WEB_CREDIT_LOG_TAG, "html snippet=${debugWebCreditHtmlSnippet(html)}")
                         val webCredit = html?.let { EdisonParser.parseWebCredit(it) }
 
                         if (webCredit?.balance != null) {
                             saveWebCredit(appContext, webCredit)
-                            Log.d(
-                                WEB_CREDIT_LOG_TAG,
-                                "balance loaded from html: balance=${webCredit.balance} currency=${webCredit.currencyCode}"
-                            )
-                            finish("success_html")
-                        } else {
-                            Log.d(WEB_CREDIT_LOG_TAG, "html parser returned no balance, finishing as parse_failed")
-                            finish("parse_failed")
                         }
+                        finish()
                     }
                 }
 
@@ -146,23 +127,15 @@ fun WebCreditSyncView(
 
                         val modelJson = decodeEvaluateJavascriptString(modelResult)
                         val ssoUrl = extractWebCreditSsoUrl(modelJson)
-                        Log.d(WEB_CREDIT_LOG_TAG, "window callback length=${modelJson?.length ?: 0}")
-                        Log.d(WEB_CREDIT_LOG_TAG, "window balance node=${debugWebCreditBalanceNode(modelJson)}")
                         val webCredit = modelJson?.let { EdisonParser.parseWebCreditModelJson(it) }
 
                         if (webCredit?.balance != null) {
                             saveWebCredit(appContext, webCredit)
-                            Log.d(
-                                WEB_CREDIT_LOG_TAG,
-                                "balance loaded from window: balance=${webCredit.balance} currency=${webCredit.currencyCode}"
-                            )
-                            finish("success_window")
+                            finish()
                         } else if (!authAttempted && !ssoUrl.isNullOrBlank()) {
                             authAttempted = true
-                            Log.d(WEB_CREDIT_LOG_TAG, "window model returned no balance, loading ssoButtonUrl=$ssoUrl")
                             loadUrl(ssoUrl)
                         } else {
-                            Log.d(WEB_CREDIT_LOG_TAG, "window model returned no balance, switching to html fallback")
                             tryHtmlFallback()
                         }
                     }
@@ -177,27 +150,28 @@ fun WebCreditSyncView(
                 settings.displayZoomControls = false
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
-                        Log.d(
-                            WEB_CREDIT_LOG_TAG,
-                            "page finished: $url cookies=${cookieManager.getCookie(WEB_CREDIT_MENU_URL).orEmpty().length}"
-                        )
                         if (resolved) return
                         if (url.isNullOrBlank()) return
 
                         if (url.contains("www.sso.vsb.cz/login", ignoreCase = true) && !authRequiredReported) {
                             authRequiredReported = true
                             if (allowInteractiveAuth) {
+                                scheduleTimeout(interactive = true)
                                 latestOnAuthRequired()
                             } else {
-                                finish("auth_required")
+                                finish()
                             }
                             return
                         }
 
-                        if (!url.contains("/webkredit/Ordering/Menu", ignoreCase = true)) return
+                        if (!url.contains("/webkredit/Ordering/Menu", ignoreCase = true)) {
+                            scheduleTimeout()
+                            return
+                        }
 
                         pageVersion += 1
                         val currentVersion = pageVersion
+                        scheduleTimeout()
                         postDelayed({
                             if (!resolved && currentVersion == pageVersion) {
                                 evaluateMenuPage()
@@ -206,7 +180,8 @@ fun WebCreditSyncView(
                     }
                 }
 
-                postDelayed({ finish("timeout") }, WEB_CREDIT_TIMEOUT_MS)
+                timeoutRunnable = Runnable { finish() }
+                scheduleTimeout()
                 loadUrl(WEB_CREDIT_MENU_URL)
             }
         }

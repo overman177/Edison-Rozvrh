@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.Bundle
+import android.webkit.CookieManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.DrawableRes
@@ -76,6 +77,7 @@ import cz.tal0052.edisonrozvrh.data.parser.CurrentResultItem
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
 import cz.tal0052.edisonrozvrh.data.parser.StudyInfoData
 import cz.tal0052.edisonrozvrh.data.parser.WebCreditData
+import cz.tal0052.edisonrozvrh.data.repository.EdisonRepository
 import cz.tal0052.edisonrozvrh.map.resolveVsbRoomMapInfo
 import cz.tal0052.edisonrozvrh.ui.auth.EdisonLoginScreen
 import cz.tal0052.edisonrozvrh.ui.auth.WebCreditSyncView
@@ -141,9 +143,17 @@ private const val SCHEDULE_CACHE_VERSION = 9
 private const val RESULTS_CACHE_VERSION = 3
 private const val STUDY_INFO_CACHE_VERSION = 2
 private const val WEB_CREDIT_CACHE_VERSION = 2
+private const val WEB_CREDIT_MENU_URL = "https://stravovani.vsb.cz/webkredit/Ordering/Menu"
+private const val WEB_CREDIT_SILENT_SYNC_INTERVAL_MS = 15 * 60 * 1000L
+private const val WEB_CREDIT_LAST_ATTEMPT_KEY = "web_credit_last_attempt_ms"
+private const val WEB_CREDIT_DATA_KEY = "web_credit_data"
+private const val WEB_CREDIT_VERSION_KEY = "web_credit_version"
+private const val SCHEDULE_PREFS_NAME = "schedule"
 private const val VSB_MAP_PAGE_URL = "https://mapy.vsb.cz/maps/"
 private const val VSB_MAP_LANG = "cs"
 private val roomMapUrlCache = mutableMapOf<String, String>()
+@Volatile private var webCreditSilentSyncRunning = false
+private val webCreditSilentSyncLock = Any()
 
 @Composable
 private fun lessonTypePalette(type: String): LessonTypePalette {
@@ -1012,28 +1022,74 @@ fun loadStudyInfo(context: Context): StudyInfoData? {
     }
 }
 fun saveWebCredit(context: Context, webCredit: WebCreditData) {
-    val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
+    val prefs = context.getSharedPreferences(SCHEDULE_PREFS_NAME, Context.MODE_PRIVATE)
+    val now = System.currentTimeMillis()
 
     prefs.edit {
-        putInt("web_credit_version", WEB_CREDIT_CACHE_VERSION)
-        putString("web_credit_data", Gson().toJson(webCredit))
+        putInt(WEB_CREDIT_VERSION_KEY, WEB_CREDIT_CACHE_VERSION)
+        putString(WEB_CREDIT_DATA_KEY, Gson().toJson(webCredit))
+        putLong(WEB_CREDIT_LAST_ATTEMPT_KEY, now)
     }
 
     ScheduleWidgetProvider.refreshAll(context)
     ScheduleWidgetSnapshotProvider.refreshAll(context)
 }
 
+private fun markWebCreditSilentSyncAttempt(context: Context, timestamp: Long = System.currentTimeMillis()) {
+    context.getSharedPreferences(SCHEDULE_PREFS_NAME, Context.MODE_PRIVATE).edit {
+        putLong(WEB_CREDIT_LAST_ATTEMPT_KEY, timestamp)
+    }
+}
+
+private fun shouldRunWebCreditSilentSync(context: Context, now: Long = System.currentTimeMillis()): Boolean {
+    val lastAttempt = context.getSharedPreferences(SCHEDULE_PREFS_NAME, Context.MODE_PRIVATE)
+        .getLong(WEB_CREDIT_LAST_ATTEMPT_KEY, 0L)
+    return now - lastAttempt >= WEB_CREDIT_SILENT_SYNC_INTERVAL_MS
+}
+
+fun maybeSyncWebCreditInBackground(context: Context) {
+    val appContext = context.applicationContext
+    val cookies = CookieManager.getInstance().getCookie(WEB_CREDIT_MENU_URL).orEmpty()
+    var shouldStart = false
+
+    synchronized(webCreditSilentSyncLock) {
+        if (!webCreditSilentSyncRunning && shouldRunWebCreditSilentSync(appContext)) {
+            markWebCreditSilentSyncAttempt(appContext)
+            if (cookies.isNotBlank()) {
+                webCreditSilentSyncRunning = true
+                shouldStart = true
+            }
+        }
+    }
+
+    if (!shouldStart) return
+
+    Thread {
+        try {
+            val webCredit = EdisonRepository.downloadWebCredit(cookies)
+            if (webCredit?.balance != null) {
+                saveWebCredit(appContext, webCredit)
+            }
+        } finally {
+            synchronized(webCreditSilentSyncLock) {
+                webCreditSilentSyncRunning = false
+            }
+        }
+    }.start()
+}
+
 fun loadWebCredit(context: Context): WebCreditData? {
-    val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
-    val version = prefs.getInt("web_credit_version", 0)
+    val prefs = context.getSharedPreferences(SCHEDULE_PREFS_NAME, Context.MODE_PRIVATE)
+    val version = prefs.getInt(WEB_CREDIT_VERSION_KEY, 0)
     if (version != WEB_CREDIT_CACHE_VERSION) {
         prefs.edit {
-            remove("web_credit_data")
+            remove(WEB_CREDIT_DATA_KEY)
+            remove(WEB_CREDIT_LAST_ATTEMPT_KEY)
         }
         return null
     }
 
-    val json = prefs.getString("web_credit_data", null) ?: return null
+    val json = prefs.getString(WEB_CREDIT_DATA_KEY, null) ?: return null
 
     return try {
         Gson().fromJson(json, WebCreditData::class.java)?.takeIf { it.balance != null }
