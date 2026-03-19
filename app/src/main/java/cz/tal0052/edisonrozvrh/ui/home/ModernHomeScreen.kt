@@ -1,4 +1,4 @@
-package cz.tal0052.edisonrozvrh.ui.home
+﻿package cz.tal0052.edisonrozvrh.ui.home
 
 import android.content.Intent
 import android.net.Uri
@@ -89,7 +89,8 @@ private enum class HomeTab(val label: String) {
     UNIVERSITY("Studium"),
     RESULTS("V\u00fdsledky"),
     EXAMS("Zkou\u0161ky"),
-    SCHEDULE("Rozvrh")
+    SCHEDULE("Rozvrh"),
+    EMAIL("Email")
 }
 
 private enum class WeekParity(val label: String) {
@@ -146,6 +147,8 @@ fun ScheduleScreen(
                     title = "Term\u00edny",
                     subtitle = "Work in progress, dod\u011bl\u00e1m a\u017e budou zkou\u0161ky dostupn\u00e9."
                 )
+
+                HomeTab.EMAIL -> EmailPreviewTab()
             }
 
             Image(
@@ -168,7 +171,7 @@ private fun EdisonBottomNavigation(
     selectedTab: HomeTab,
     onSelect: (HomeTab) -> Unit
 ) {
-    val tabs = listOf(HomeTab.UNIVERSITY, HomeTab.RESULTS, HomeTab.EXAMS, HomeTab.SCHEDULE)
+    val tabs = listOf(HomeTab.UNIVERSITY, HomeTab.RESULTS, HomeTab.EXAMS, HomeTab.SCHEDULE, HomeTab.EMAIL)
 
     Surface(
         color = Color.Transparent,
@@ -1522,6 +1525,162 @@ private fun ResultValueChip(
     }
 }
 
+
+@Composable
+private fun EmailPreviewTab() {
+    val folders = listOf("Inbox", "Drafts", "Sent")
+    val previewMessages = listOf(
+        Triple("VSB Portal", "Potvrzeni registrace predmetu a aktualizace harmonogramu.", "Dnes"),
+        Triple("Studijni oddeleni", "Pripominka k zapisu a kontrole osobnich udaju.", "Vcera"),
+        Triple("Roundcube", "Tady bude vlastni UI posty. Funkcnost zatim neni zapojena.", "Preview")
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Email",
+                    fontSize = 42.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Roundcube Inbox",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            Button(
+                onClick = {},
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                Text("Obnovit")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            folders.forEachIndexed { index, folder ->
+                Box(
+                    modifier = Modifier
+                        .background(
+                            color = if (index == 0) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = if (index == 0) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                            else MaterialTheme.colorScheme.outline.copy(alpha = 0.24f),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = folder,
+                        color = if (index == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.56f)
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Preview only",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Tohle je jen navrat UI obrazovky pro Email. Nacitaní posty, login i otevirani zprav jsou ted vypnute.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        previewMessages.forEachIndexed { index, item ->
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = if (index == 0) 0.64f else 0.56f)
+                ),
+                border = BorderStroke(
+                    1.dp,
+                    if (index == 0) MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
+                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = item.first,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = if (index == 0) FontWeight.Bold else FontWeight.SemiBold,
+                            fontSize = 17.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = item.third,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.padding(start = 12.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = item.second,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
+        Spacer(modifier = Modifier.height(72.dp))
+    }
+}
 @Composable
 private fun PlaceholderTab(
     title: String,
@@ -1746,3 +1905,6 @@ private fun toWeekParity(rawPattern: String): WeekParity {
         else -> WeekParity.EVERY
     }
 }
+
+
+

@@ -129,7 +129,7 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
 
         private fun formatBalanceText(context: Context): String {
             val webCredit = loadWebCredit(context)
-            val balance = webCredit?.balance ?: return "bal: ---"
+            val balance = webCredit?.balance ?: return "---"
             val formatter = NumberFormat.getNumberInstance(Locale("cs", "CZ")).apply {
                 minimumFractionDigits = 2
                 maximumFractionDigits = 2
@@ -138,9 +138,9 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
             val currency = webCredit.currencySymbol.ifBlank { webCredit.currencyCode }.trim()
 
             return if (currency.isBlank()) {
-                "bal: $amount"
+                amount
             } else {
-                "bal: $amount $currency"
+                "$amount $currency"
             }
         }
     }

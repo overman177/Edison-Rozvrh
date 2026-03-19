@@ -64,7 +64,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="10dp"
-                android:text="bal: 511,30 CZK"
+                android:text="511,30 Kč"
                 android:textColor="@color/widget_text_secondary"
                 android:textSize="11sp"
                 android:textStyle="bold" />
