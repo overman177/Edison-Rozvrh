@@ -2,6 +2,7 @@ package cz.tal0052.edisonrozvrh.widget
 
 import cz.tal0052.edisonrozvrh.R
 import cz.tal0052.edisonrozvrh.app.MainActivity
+import cz.tal0052.edisonrozvrh.app.loadWebCredit
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -12,6 +13,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import android.widget.RemoteViews
+import java.text.NumberFormat
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -99,10 +101,12 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 R.id.widgetDate,
                 today.format(DateTimeFormatter.ofPattern("d.M.", Locale.ROOT))
             )
+            views.setTextViewText(R.id.widgetBalance, formatBalanceText(context))
 
             val openAppPending = buildOpenAppPendingIntent(context, 1000 + appWidgetId)
             views.setOnClickPendingIntent(R.id.widgetTitle, openAppPending)
             views.setOnClickPendingIntent(R.id.widgetNow, openAppPending)
+            views.setOnClickPendingIntent(R.id.widgetBalance, openAppPending)
             views.setOnClickPendingIntent(R.id.widgetHeader, openAppPending)
             views.setOnClickPendingIntent(R.id.widgetLogo, openAppPending)
 
@@ -118,6 +122,23 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
             }
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
+        }
+
+        private fun formatBalanceText(context: Context): String {
+            val webCredit = loadWebCredit(context)
+            val balance = webCredit?.balance ?: return "bal: ---"
+            val formatter = NumberFormat.getNumberInstance(Locale("cs", "CZ")).apply {
+                minimumFractionDigits = 2
+                maximumFractionDigits = 2
+            }
+            val amount = formatter.format(balance)
+            val currency = webCredit.currencySymbol.ifBlank { webCredit.currencyCode }.trim()
+
+            return if (currency.isBlank()) {
+                "bal: $amount"
+            } else {
+                "bal: $amount $currency"
+            }
         }
     }
 }
@@ -167,3 +188,4 @@ internal fun LocalDate.toCzechLongDay(): String {
         DayOfWeek.SUNDAY -> "Ned\u011ble"
     }
 }
+

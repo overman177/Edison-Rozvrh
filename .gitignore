@@ -15,6 +15,7 @@
 local.properties
 .android-home
 .gradle-home
+.gradle-user
 .kotlin
 *.log
 /tmp

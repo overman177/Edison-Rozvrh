@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
@@ -50,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,8 +75,10 @@ import cz.tal0052.edisonrozvrh.R
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultItem
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
 import cz.tal0052.edisonrozvrh.data.parser.StudyInfoData
+import cz.tal0052.edisonrozvrh.data.parser.WebCreditData
 import cz.tal0052.edisonrozvrh.map.resolveVsbRoomMapInfo
 import cz.tal0052.edisonrozvrh.ui.auth.EdisonLoginScreen
+import cz.tal0052.edisonrozvrh.ui.auth.WebCreditSyncView
 import cz.tal0052.edisonrozvrh.ui.design.LessonTypePalette
 import cz.tal0052.edisonrozvrh.ui.design.UiColorConfig
 import cz.tal0052.edisonrozvrh.ui.home.ScheduleScreen
@@ -133,9 +137,10 @@ data class StoredCurrentResultsData(
     val items: List<StoredCurrentResultItem>? = null
 )
 
-private const val SCHEDULE_CACHE_VERSION = 8
-private const val RESULTS_CACHE_VERSION = 2
-private const val STUDY_INFO_CACHE_VERSION = 1
+private const val SCHEDULE_CACHE_VERSION = 9
+private const val RESULTS_CACHE_VERSION = 3
+private const val STUDY_INFO_CACHE_VERSION = 2
+private const val WEB_CREDIT_CACHE_VERSION = 2
 private const val VSB_MAP_PAGE_URL = "https://mapy.vsb.cz/maps/"
 private const val VSB_MAP_LANG = "cs"
 private val roomMapUrlCache = mutableMapOf<String, String>()
@@ -208,8 +213,11 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val lessonsState = remember { mutableStateOf<List<Lesson>?>(null) }
                     val resultsState = remember { mutableStateOf<CurrentResultsData?>(null) }
+
                     val studyInfoState = remember { mutableStateOf<StudyInfoData?>(null) }
                     val forceEdisonLoginState = remember { mutableStateOf(false) }
+                    val webCreditSyncAttemptedState = remember { mutableStateOf(false) }
+                    val webCreditAuthVisibleState = remember { mutableStateOf(false) }
 
                     val cachedLessons = loadSchedule(this)
                     if (cachedLessons != null) {
@@ -226,6 +234,8 @@ class MainActivity : ComponentActivity() {
                         studyInfoState.value = cachedStudyInfo
                     }
 
+                    val cachedWebCredit = loadWebCredit(this)
+
                     if (lessonsState.value == null || forceEdisonLoginState.value) {
                         EdisonLoginScreen { lessons, currentResults, studyInfo ->
                             lessonsState.value = lessons
@@ -235,15 +245,43 @@ class MainActivity : ComponentActivity() {
                             if (studyInfo != null) {
                                 studyInfoState.value = studyInfo
                             }
+                            webCreditSyncAttemptedState.value = false
+                            webCreditAuthVisibleState.value = false
                             forceEdisonLoginState.value = false
                         }
                     } else {
-                        ScheduleScreen(
-                            lessons = lessonsState.value!!,
-                            currentResults = resultsState.value,
-                            studyInfo = studyInfoState.value,
-                            onRefreshFromEdison = { forceEdisonLoginState.value = true }
-                        )
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            ScheduleScreen(
+                                lessons = lessonsState.value!!,
+                                currentResults = resultsState.value,
+                                studyInfo = studyInfoState.value,
+                                onRefreshFromEdison = {
+                                    webCreditSyncAttemptedState.value = false
+                                    webCreditAuthVisibleState.value = false
+                                    forceEdisonLoginState.value = true
+                                }
+                            )
+
+                            if (!webCreditSyncAttemptedState.value) {
+                                key(webCreditAuthVisibleState.value) {
+                                    WebCreditSyncView(
+                                        modifier = if (webCreditAuthVisibleState.value) {
+                                            Modifier.fillMaxSize()
+                                        } else {
+                                            Modifier.size(1.dp)
+                                        },
+                                        allowInteractiveAuth = cachedWebCredit == null,
+                                        onAuthRequired = {
+                                            webCreditAuthVisibleState.value = true
+                                        },
+                                        onFinished = {
+                                            webCreditAuthVisibleState.value = false
+                                            webCreditSyncAttemptedState.value = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -973,6 +1011,33 @@ fun loadStudyInfo(context: Context): StudyInfoData? {
         null
     }
 }
+fun saveWebCredit(context: Context, webCredit: WebCreditData) {
+    val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
 
+    prefs.edit {
+        putInt("web_credit_version", WEB_CREDIT_CACHE_VERSION)
+        putString("web_credit_data", Gson().toJson(webCredit))
+    }
 
+    ScheduleWidgetProvider.refreshAll(context)
+    ScheduleWidgetSnapshotProvider.refreshAll(context)
+}
 
+fun loadWebCredit(context: Context): WebCreditData? {
+    val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
+    val version = prefs.getInt("web_credit_version", 0)
+    if (version != WEB_CREDIT_CACHE_VERSION) {
+        prefs.edit {
+            remove("web_credit_data")
+        }
+        return null
+    }
+
+    val json = prefs.getString("web_credit_data", null) ?: return null
+
+    return try {
+        Gson().fromJson(json, WebCreditData::class.java)?.takeIf { it.balance != null }
+    } catch (_: Exception) {
+        null
+    }
+}

@@ -14,6 +14,21 @@ import java.text.Normalizer
 import java.util.Locale
 
 class EdisonParserFixtureTest {
+    @Test
+    fun parseWebCredit_fixture_parsesBalanceAndCurrency() {
+        val file = sequenceOf(
+            File("fixtures/WebCredit.html"),
+            File("../fixtures/WebCredit.html")
+        ).firstOrNull { it.exists() } ?: File("fixtures/WebCredit.html")
+        assertTrue("Fixture not found: ${file.absolutePath}", file.exists())
+
+        val html = file.readText()
+        val webCredit = EdisonParser.parseWebCredit(html)
+
+        assertNotNull("WebCredit data is null", webCredit)
+        assertEquals(511.30, webCredit!!.balance ?: 0.0, 0.001)
+        assertEquals("CZK", webCredit.currencyCode)
+    }
 
     @Test
     fun parseSchedulePreview_fixture_hasAllActivities() {
@@ -93,10 +108,10 @@ class EdisonParserFixtureTest {
             [
               {
                 "sportTitle": "Volejbal",
-                "weekDayAbbrev": "Út",
+                "weekDayAbbrev": "ï¿½t",
                 "scheduleWindowTimeText": "9:00-10:30",
                 "sportPlaceTitle": "Telocvicna Kolej A",
-                "teacherName": "Kyselová"
+                "teacherName": "Kyselovï¿½"
               }
             ]
         """.trimIndent()
@@ -188,11 +203,11 @@ class EdisonParserFixtureTest {
                       <th>8:00<br/>8:45</th>
                     </tr>
                     <tr>
-                      <th>Pondelí</th>
+                      <th>Pondelï¿½</th>
                       <td>
                         <table class="actTable schedLecture">
                           <tr>
-                            <td><a href="#"><abbr>ALG</abbr></a><b>Lichý</b></td>
+                            <td><a href="#"><abbr>ALG</abbr></a><b>Lichï¿½</b></td>
                             <td class="rightAlign topAlign" rowspan="2">
                               <a class="commandLink" onclick="return myfaces.oam.submitForm('f','f:detailLink',null,[['concreteActivityId','123']]);"></a>
                             </td>
@@ -246,10 +261,10 @@ class EdisonParserFixtureTest {
         assertNotNull("Subject detail is null", detail)
 
         val parsed = detail!!
-        assertEquals("2025/2026 letní", parsed.semester)
+        assertEquals("2025/2026 letnï¿½", parsed.semester)
         assertTrue("Program should be parsed", parsed.program.contains("PSS"))
-        assertEquals("prezencní", parsed.form)
-        assertEquals("bakalárské", parsed.studyType)
+        assertEquals("prezencnï¿½", parsed.form)
+        assertEquals("bakalï¿½rskï¿½", parsed.studyType)
         assertTrue("Expected at least one summary row", parsed.totalRows.isNotEmpty())
         assertTrue("Expected at least three checkpoints", parsed.checkpoints.size >= 3)
     }

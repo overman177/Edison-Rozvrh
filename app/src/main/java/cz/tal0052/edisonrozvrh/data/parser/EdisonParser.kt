@@ -3,6 +3,7 @@ package cz.tal0052.edisonrozvrh.data.parser
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.json.JSONArray
+import org.json.JSONObject
 import java.text.Normalizer
 import java.util.Locale
 
@@ -81,6 +82,12 @@ data class StudyInfoData(
     val admission: StudyPageData?
 )
 
+data class WebCreditData(
+    val balance: Double?,
+    val currencyCode: String,
+    val currencySymbol: String
+)
+
 data class StudyPageData(
     val title: String,
     val sections: List<StudySection>,
@@ -133,6 +140,128 @@ object EdisonParser {
 
     fun parseAdmissionStudyPage(html: String): StudyPageData? {
         return parseStudyPage(html)
+    }
+
+    fun parseWebCredit(html: String): WebCreditData? {
+        val marker = "window.wkIndexModel"
+        val markerIndex = html.indexOf(marker)
+        if (markerIndex < 0) return null
+
+        val assignmentIndex = html.indexOf('=', markerIndex)
+        if (assignmentIndex < 0) return null
+
+        val jsonStart = html.indexOf('{', assignmentIndex)
+        if (jsonStart < 0) return null
+
+        val modelJson = extractJsonObject(html, jsonStart) ?: return null
+        return parseWebCreditModelJson(modelJson)
+    }
+
+    fun parseWebCreditModelJson(json: String): WebCreditData? {
+        return try {
+            val root = JSONObject(json)
+            val model = root.optJSONObject("model") ?: root
+            val currency = model.optJSONObject("currency")
+
+            WebCreditData(
+                balance = extractWebCreditBalance(model),
+                currencyCode = currency?.optString("code").orEmpty(),
+                currencySymbol = currency?.optString("symbol").orEmpty()
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun extractWebCreditBalance(node: Any?): Double? {
+        return when (node) {
+            null, JSONObject.NULL -> null
+            is Number -> node.toDouble()
+            is String -> parseWebCreditBalanceString(node)
+            is JSONObject -> {
+                val directKeys = listOf("balance", "amount", "value", "actualBalance", "availableBalance", "credit")
+                directKeys.forEach { key ->
+                    extractWebCreditBalance(node.opt(key))?.let { return it }
+                }
+
+                val iterator = node.keys()
+                while (iterator.hasNext()) {
+                    val key = iterator.next()
+                    val value = node.opt(key)
+                    val lowered = key.lowercase(Locale.ROOT)
+
+                    if (
+                        lowered.contains("balance") ||
+                        lowered.contains("amount") ||
+                        lowered.contains("credit") ||
+                        lowered.contains("value")
+                    ) {
+                        extractWebCreditBalance(value)?.let { return it }
+                    }
+
+                    when (value) {
+                        is JSONObject -> extractWebCreditBalance(value)?.let { return it }
+                        is JSONArray -> {
+                            for (index in 0 until value.length()) {
+                                extractWebCreditBalance(value.opt(index))?.let { return it }
+                            }
+                        }
+                    }
+                }
+                null
+            }
+            is JSONArray -> {
+                for (index in 0 until node.length()) {
+                    extractWebCreditBalance(node.opt(index))?.let { return it }
+                }
+                null
+            }
+            else -> null
+        }
+    }
+
+    private fun parseWebCreditBalanceString(raw: String): Double? {
+        val normalized = raw
+            .trim()
+            .replace('\u00A0', ' ')
+            .replace(Regex("[^0-9,.-]"), "")
+            .replace(',', '.')
+
+        return normalized.toDoubleOrNull()
+    }
+
+    private fun extractJsonObject(source: String, startIndex: Int): String? {
+        if (startIndex !in source.indices || source[startIndex] != '{') return null
+
+        var depth = 0
+        var inString = false
+        var escaping = false
+
+        for (index in startIndex until source.length) {
+            val char = source[index]
+
+            if (inString) {
+                when {
+                    escaping -> escaping = false
+                    char == '\\' -> escaping = true
+                    char == '"' -> inString = false
+                }
+                continue
+            }
+
+            when (char) {
+                '"' -> inString = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) {
+                        return source.substring(startIndex, index + 1)
+                    }
+                }
+            }
+        }
+
+        return null
     }
     fun parseCurrentResults(html: String): CurrentResultsData? {
         val doc = Jsoup.parse(html, "https://edison.sso.vsb.cz")
@@ -850,4 +979,3 @@ object EdisonParser {
             .trim()
     }
 }
-

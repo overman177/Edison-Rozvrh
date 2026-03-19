@@ -5,6 +5,7 @@ import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
 import cz.tal0052.edisonrozvrh.data.parser.EdisonParser
 import cz.tal0052.edisonrozvrh.data.parser.ScheduleContext
 import cz.tal0052.edisonrozvrh.data.parser.StudyInfoData
+import cz.tal0052.edisonrozvrh.data.parser.WebCreditData
 
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -20,6 +21,7 @@ object EdisonRepository {
         "https://edison.sso.vsb.cz/wps/myportal/student/informace/osobni-udaje/matricni-udaje"
     private const val ADMISSION_INFO_URL =
         "https://edison.sso.vsb.cz/wps/myportal/student/informace/osobni-udaje/prijimaci-rizeni"
+    private const val WEB_CREDIT_URL = "https://stravovani.vsb.cz/webkredit/Ordering/Menu"
     private const val SPORTS_MY_ACTIVITIES_URL =
         "https://edison.sso.vsb.cz/wps/.cz.vsb.edison.edu.study.pass.portlet/jaxrs/sports/myactivities"
 
@@ -183,6 +185,20 @@ object EdisonRepository {
             admission = admission
         )
     }
+
+    fun downloadWebCredit(cookies: String?): WebCreditData? {
+        if (cookies.isNullOrBlank()) return null
+
+        val request = Request.Builder()
+            .url(WEB_CREDIT_URL)
+            .addHeader("Cookie", cookies)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            return EdisonParser.parseWebCredit(response.body.string())
+        }
+    }
     private fun downloadSchedule(cookies: String): String? {
         val request = Request.Builder()
             .url(SCHEDULE_URL)
@@ -280,4 +296,3 @@ object EdisonRepository {
         }
     }
 }
-
