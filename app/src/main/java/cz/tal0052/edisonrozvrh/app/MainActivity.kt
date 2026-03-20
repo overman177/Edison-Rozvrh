@@ -62,6 +62,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -72,6 +73,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import cz.tal0052.edisonrozvrh.R
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultItem
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
@@ -245,7 +248,25 @@ class MainActivity : ComponentActivity() {
                     }
 
                     val cachedWebCredit = loadWebCredit(this)
+                    val lifecycleOwner = LocalLifecycleOwner.current
 
+                    DisposableEffect(lifecycleOwner, lessonsState.value, forceEdisonLoginState.value) {
+                        val observer = LifecycleEventObserver { _, event ->
+                            if (
+                                event == Lifecycle.Event.ON_START &&
+                                lessonsState.value != null &&
+                                !forceEdisonLoginState.value
+                            ) {
+                                webCreditAuthVisibleState.value = false
+                                webCreditSyncAttemptedState.value = false
+                            }
+                        }
+
+                        lifecycleOwner.lifecycle.addObserver(observer)
+                        onDispose {
+                            lifecycleOwner.lifecycle.removeObserver(observer)
+                        }
+                    }
                     if (lessonsState.value == null || forceEdisonLoginState.value) {
                         EdisonLoginScreen { lessons, currentResults, studyInfo ->
                             lessonsState.value = lessons
@@ -280,7 +301,7 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                             Modifier.size(1.dp)
                                         },
-                                        allowInteractiveAuth = cachedWebCredit == null,
+                                        allowInteractiveAuth = true,
                                         onAuthRequired = {
                                             webCreditAuthVisibleState.value = true
                                         },
@@ -1053,12 +1074,14 @@ fun maybeSyncWebCreditInBackground(context: Context) {
     var shouldStart = false
 
     synchronized(webCreditSilentSyncLock) {
-        if (!webCreditSilentSyncRunning && shouldRunWebCreditSilentSync(appContext)) {
+        if (
+            !webCreditSilentSyncRunning &&
+            cookies.isNotBlank() &&
+            shouldRunWebCreditSilentSync(appContext)
+        ) {
             markWebCreditSilentSyncAttempt(appContext)
-            if (cookies.isNotBlank()) {
-                webCreditSilentSyncRunning = true
-                shouldStart = true
-            }
+            webCreditSilentSyncRunning = true
+            shouldStart = true
         }
     }
 
