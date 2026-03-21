@@ -67,6 +67,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("org.jsoup:jsoup:1.22.1")
     implementation("com.google.code.gson:gson:2.13.2")
+    implementation("androidx.security:security-crypto:1.0.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

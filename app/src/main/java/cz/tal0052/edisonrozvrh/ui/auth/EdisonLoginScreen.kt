@@ -1,7 +1,9 @@
 package cz.tal0052.edisonrozvrh.ui.auth
 
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
@@ -14,6 +16,9 @@ import cz.tal0052.edisonrozvrh.app.saveCurrentResults
 import cz.tal0052.edisonrozvrh.app.saveSchedule
 import cz.tal0052.edisonrozvrh.app.saveStudyInfo
 import cz.tal0052.edisonrozvrh.app.saveWebCredit
+import cz.tal0052.edisonrozvrh.data.auth.EdisonCredentials
+import cz.tal0052.edisonrozvrh.data.auth.loadEdisonCredentials
+import cz.tal0052.edisonrozvrh.data.auth.saveEdisonCredentials
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
 import cz.tal0052.edisonrozvrh.data.parser.EdisonParser
 import cz.tal0052.edisonrozvrh.data.parser.StudyInfoData
@@ -44,6 +49,181 @@ private const val WEB_CREDIT_HTML_SCRIPT = """
   }
 })();
 """
+
+private class EdisonCredentialBridge(
+    private val onCredentialsCaptured: (EdisonCredentials) -> Unit
+) {
+    @JavascriptInterface
+    fun cacheCredentials(username: String?, password: String?) {
+        val normalizedUsername = username?.trim().orEmpty()
+        val normalizedPassword = password.orEmpty()
+        if (normalizedUsername.isBlank() || normalizedPassword.isBlank()) return
+
+        onCredentialsCaptured(
+            EdisonCredentials(
+                username = normalizedUsername,
+                password = normalizedPassword
+            )
+        )
+    }
+}
+
+private fun isSsoLoginUrl(url: String): Boolean {
+    return runCatching {
+        val uri = Uri.parse(url)
+        val host = uri.host.orEmpty()
+        host.contains("sso.vsb.cz", ignoreCase = true) &&
+            uri.path.orEmpty().contains("/login", ignoreCase = true)
+    }.getOrDefault(false)
+}
+
+private fun buildSsoCredentialScript(
+    credentials: EdisonCredentials?,
+    autoSubmit: Boolean
+): String {
+    val username = JSONObject.quote(credentials?.username.orEmpty())
+    val password = JSONObject.quote(credentials?.password.orEmpty())
+
+    return """
+(function() {
+  const savedUsername = $username;
+  const savedPassword = $password;
+  const shouldAutoSubmit = ${if (autoSubmit) "true" else "false"};
+  const maxAttempts = 20;
+  let attempts = 0;
+
+  function first(selectors) {
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) return element;
+    }
+    return null;
+  }
+
+  function setValue(field, value) {
+    const valueDescriptor = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+    if (valueDescriptor && valueDescriptor.set) {
+      valueDescriptor.set.call(field, value);
+    } else {
+      field.value = value;
+    }
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function capture(userField, passwordField) {
+    const usernameValue = (userField.value || "").trim();
+    const passwordValue = passwordField.value || "";
+    if (!usernameValue || !passwordValue) return;
+    if (window.EdisonCredentialBridge && window.EdisonCredentialBridge.cacheCredentials) {
+      window.EdisonCredentialBridge.cacheCredentials(usernameValue, passwordValue);
+    }
+  }
+
+  function hook(userField, passwordField) {
+    if (userField.dataset.edisonCredentialHooked === "1") return;
+    userField.dataset.edisonCredentialHooked = "1";
+    passwordField.dataset.edisonCredentialHooked = "1";
+
+    const submitHandler = function() {
+      capture(userField, passwordField);
+    };
+
+    userField.addEventListener("change", submitHandler, true);
+    passwordField.addEventListener("change", submitHandler, true);
+    passwordField.addEventListener("keyup", function(event) {
+      if (event.key === "Enter") submitHandler();
+    }, true);
+
+    const form = passwordField.form || userField.form || document.querySelector("form");
+    if (form && form.dataset.edisonCredentialHooked !== "1") {
+      form.dataset.edisonCredentialHooked = "1";
+      form.addEventListener("submit", submitHandler, true);
+    }
+
+    document.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function(button) {
+      if (button.dataset.edisonCredentialHooked === "1") return;
+      button.dataset.edisonCredentialHooked = "1";
+      button.addEventListener("click", submitHandler, true);
+    });
+  }
+
+  function submit(userField, passwordField) {
+    const form = passwordField.form || userField.form || document.querySelector("form");
+    const submitButton = form
+      ? form.querySelector('button[type="submit"], input[type="submit"]')
+      : document.querySelector('button[type="submit"], input[type="submit"]');
+
+    capture(userField, passwordField);
+
+    if (submitButton && typeof submitButton.click === "function") {
+      submitButton.click();
+      return;
+    }
+
+    if (form && typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+      return;
+    }
+
+    if (form && typeof form.submit === "function") {
+      form.submit();
+    }
+  }
+
+  function init() {
+    const userField = first([
+      'input[autocomplete="username"]',
+      'input[name="username"]',
+      'input[name="user"]',
+      'input[name="j_username"]',
+      'input[id="username"]',
+      'input[id*="user"]',
+      'input[type="email"]',
+      'input[type="text"]'
+    ]);
+    const passwordField = first([
+      'input[autocomplete="current-password"]',
+      'input[name="password"]',
+      'input[name="pass"]',
+      'input[name="j_password"]',
+      'input[id="password"]',
+      'input[id*="pass"]',
+      'input[type="password"]'
+    ]);
+
+    if (!userField || !passwordField) {
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        window.setTimeout(init, 150);
+      }
+      return;
+    }
+
+    hook(userField, passwordField);
+    capture(userField, passwordField);
+
+    const shouldFill = !!savedUsername && !!savedPassword &&
+      (!userField.value || !passwordField.value || shouldAutoSubmit);
+
+    if (shouldFill) {
+      setValue(userField, savedUsername);
+      setValue(passwordField, savedPassword);
+      capture(userField, passwordField);
+    }
+
+    if (shouldAutoSubmit && document.body.dataset.edisonAutoLoginDone !== "1") {
+      document.body.dataset.edisonAutoLoginDone = "1";
+      window.setTimeout(function() {
+        submit(userField, passwordField);
+      }, 150);
+    }
+  }
+
+  init();
+})();
+"""
+}
 
 private fun decodeEvaluateJavascriptString(result: String?): String? {
     if (result.isNullOrBlank() || result == "null") return null
@@ -131,6 +311,7 @@ fun WebCreditSyncView(
 
                         if (webCredit?.balance != null) {
                             saveWebCredit(appContext, webCredit)
+                            cookieManager.flush()
                             finish()
                         } else if (!authAttempted && !ssoUrl.isNullOrBlank()) {
                             authAttempted = true
@@ -196,25 +377,63 @@ fun EdisonLoginScreen(
     AndroidView(
         factory = { context ->
             WebView(context).apply {
+                val appContext = context.applicationContext
+                val cookieManager = CookieManager.getInstance()
+                val storedCredentials = loadEdisonCredentials(appContext)
+
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                cookieManager.setAcceptCookie(true)
+                cookieManager.setAcceptThirdPartyCookies(this, true)
 
                 var edisonStarted = false
                 var deliveryDone = false
+                var autoLoginAttempted = false
+                var pendingCredentials: EdisonCredentials? = null
+
+                addJavascriptInterface(
+                    EdisonCredentialBridge { credentials ->
+                        pendingCredentials = credentials
+                    },
+                    "EdisonCredentialBridge"
+                )
 
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         if (deliveryDone) return
                         if (url.isNullOrBlank()) return
+
+                        if (isSsoLoginUrl(url)) {
+                            val shouldAutoSubmit = storedCredentials != null && !autoLoginAttempted
+                            if (shouldAutoSubmit) {
+                                autoLoginAttempted = true
+                            }
+
+                            view?.evaluateJavascript(
+                                buildSsoCredentialScript(
+                                    credentials = storedCredentials,
+                                    autoSubmit = shouldAutoSubmit
+                                ),
+                                null
+                            )
+                            return
+                        }
+
                         if (edisonStarted) return
                         if (!url.contains("/wps/myportal")) return
 
-                        val cookies = CookieManager.getInstance()
-                            .getCookie("https://edison.sso.vsb.cz")
-
+                        val cookies = cookieManager.getCookie("https://edison.sso.vsb.cz")
                         if (cookies.isNullOrBlank()) return
 
                         edisonStarted = true
+                        pendingCredentials?.let { credentials ->
+                            saveEdisonCredentials(
+                                context = appContext,
+                                username = credentials.username,
+                                password = credentials.password
+                            )
+                        }
+                        cookieManager.flush()
 
                         Thread {
                             val lessons = EdisonRepository.downloadDetailedSchedule(cookies)
