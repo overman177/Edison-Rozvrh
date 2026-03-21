@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Bundle
 import android.webkit.CookieManager
@@ -75,6 +76,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.lifecycleScope
 import cz.tal0052.edisonrozvrh.R
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultItem
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
@@ -97,6 +99,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 import java.util.Locale
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -104,23 +107,27 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
 data class Lesson(
+    val id: String = "",
     val subject: String,
     val teacher: String,
     val room: String,
     val day: String,
     val time: String,
     val type: String,
-    val weekPattern: String = "every"
+    val weekPattern: String = "every",
+    val isCustom: Boolean = false
 )
 
 data class StoredLesson(
+    val id: String? = null,
     val subject: String? = null,
     val teacher: String? = null,
     val room: String? = null,
     val day: String? = null,
     val time: String? = null,
     val type: String? = null,
-    val weekPattern: String? = null
+    val weekPattern: String? = null,
+    val isCustom: Boolean? = null
 )
 
 data class StoredCurrentResultItem(
@@ -143,6 +150,7 @@ data class StoredCurrentResultsData(
 )
 
 private const val SCHEDULE_CACHE_VERSION = 9
+private const val CUSTOM_SCHEDULE_CACHE_VERSION = 1
 private const val RESULTS_CACHE_VERSION = 3
 private const val STUDY_INFO_CACHE_VERSION = 2
 private const val WEB_CREDIT_CACHE_VERSION = 2
@@ -152,6 +160,8 @@ private const val WEB_CREDIT_LAST_ATTEMPT_KEY = "web_credit_last_attempt_ms"
 private const val WEB_CREDIT_DATA_KEY = "web_credit_data"
 private const val WEB_CREDIT_VERSION_KEY = "web_credit_version"
 private const val SCHEDULE_PREFS_NAME = "schedule"
+private const val CUSTOM_SCHEDULE_DATA_KEY = "custom_data"
+private const val CUSTOM_SCHEDULE_VERSION_KEY = "custom_version"
 private const val VSB_MAP_PAGE_URL = "https://mapy.vsb.cz/maps/"
 private const val VSB_MAP_LANG = "cs"
 private val roomMapUrlCache = mutableMapOf<String, String>()
@@ -269,7 +279,7 @@ class MainActivity : ComponentActivity() {
                     }
                     if (lessonsState.value == null || forceEdisonLoginState.value) {
                         EdisonLoginScreen { lessons, currentResults, studyInfo ->
-                            lessonsState.value = lessons
+                            lessonsState.value = loadSchedule(this) ?: lessons
                             if (currentResults != null) {
                                 resultsState.value = currentResults
                             }
@@ -286,6 +296,24 @@ class MainActivity : ComponentActivity() {
                                 lessons = lessonsState.value!!,
                                 currentResults = resultsState.value,
                                 studyInfo = studyInfoState.value,
+                                onAddCustomLesson = { lesson ->
+                                    val updatedLessons = lessonsState.value.orEmpty() + lesson
+                                    lessonsState.value = updatedLessons
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        val updatedCustomLessons = loadCustomLessons(this@MainActivity)
+                                            .toMutableList()
+                                            .apply { add(lesson) }
+                                        saveCustomLessons(this@MainActivity, updatedCustomLessons)
+                                    }
+                                },
+                                onDeleteCustomLesson = { lessonId ->
+                                    val updatedLessons = lessonsState.value.orEmpty()
+                                        .filterNot { lesson -> lesson.id == lessonId }
+                                    lessonsState.value = updatedLessons
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        deleteCustomLesson(this@MainActivity, lessonId)
+                                    }
+                                },
                                 onRefreshFromEdison = {
                                     webCreditSyncAttemptedState.value = false
                                     webCreditAuthVisibleState.value = false
@@ -923,35 +951,112 @@ fun normalizeWeekPatternCode(raw: String?): String {
 }
 fun saveSchedule(context: Context, lessons: List<Lesson>) {
 
-    val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
-    val json = Gson().toJson(lessons)
+    val prefs = context.getSharedPreferences(SCHEDULE_PREFS_NAME, Context.MODE_PRIVATE)
+    val normalizedLessons = lessons
+        .filterNot { it.isCustom }
+        .map { lesson -> lesson.copy(isCustom = false) }
+    saveLessonsToPrefs(
+        prefs = prefs,
+        versionKey = "version",
+        dataKey = "data",
+        version = SCHEDULE_CACHE_VERSION,
+        lessons = normalizedLessons
+    )
 
-    prefs.edit {
-        putInt("version", SCHEDULE_CACHE_VERSION)
-        putString("data", json)
-    }
+    refreshScheduleSurfaces(context)
+}
 
-    ScheduleWidgetProvider.refreshAll(context)
-    ScheduleWidgetSnapshotProvider.refreshAll(context)
+fun saveCustomLessons(context: Context, lessons: List<Lesson>) {
+
+    val prefs = context.getSharedPreferences(SCHEDULE_PREFS_NAME, Context.MODE_PRIVATE)
+    val normalizedLessons = lessons
+        .map(::normalizeCustomLesson)
+        .distinctBy { lesson -> lesson.id }
+    saveLessonsToPrefs(
+        prefs = prefs,
+        versionKey = CUSTOM_SCHEDULE_VERSION_KEY,
+        dataKey = CUSTOM_SCHEDULE_DATA_KEY,
+        version = CUSTOM_SCHEDULE_CACHE_VERSION,
+        lessons = normalizedLessons
+    )
+
+    refreshScheduleSurfaces(context)
 }
 
 fun loadSchedule(context: Context): List<Lesson>? {
 
-    val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
-    val version = prefs.getInt("version", 0)
-    if (version != SCHEDULE_CACHE_VERSION) {
+    val prefs = context.getSharedPreferences(SCHEDULE_PREFS_NAME, Context.MODE_PRIVATE)
+    val edisonLessons = loadLessonsFromPrefs(
+        prefs = prefs,
+        versionKey = "version",
+        dataKey = "data",
+        expectedVersion = SCHEDULE_CACHE_VERSION,
+        forceCustomFlag = false
+    )
+    val customLessons = loadLessonsFromPrefs(
+        prefs = prefs,
+        versionKey = CUSTOM_SCHEDULE_VERSION_KEY,
+        dataKey = CUSTOM_SCHEDULE_DATA_KEY,
+        expectedVersion = CUSTOM_SCHEDULE_CACHE_VERSION,
+        forceCustomFlag = true
+    )
+
+    return (edisonLessons + customLessons).ifEmpty { null }
+}
+
+fun loadCustomLessons(context: Context): List<Lesson> {
+    val prefs = context.getSharedPreferences(SCHEDULE_PREFS_NAME, Context.MODE_PRIVATE)
+    return loadLessonsFromPrefs(
+        prefs = prefs,
+        versionKey = CUSTOM_SCHEDULE_VERSION_KEY,
+        dataKey = CUSTOM_SCHEDULE_DATA_KEY,
+        expectedVersion = CUSTOM_SCHEDULE_CACHE_VERSION,
+        forceCustomFlag = true
+    )
+}
+
+fun deleteCustomLesson(context: Context, lessonId: String) {
+    if (lessonId.isBlank()) return
+
+    val updatedLessons = loadCustomLessons(context)
+        .filterNot { lesson -> lesson.id == lessonId }
+    saveCustomLessons(context, updatedLessons)
+}
+
+private fun saveLessonsToPrefs(
+    prefs: SharedPreferences,
+    versionKey: String,
+    dataKey: String,
+    version: Int,
+    lessons: List<Lesson>
+) {
+    prefs.edit(commit = true) {
+        putInt(versionKey, version)
+        putString(dataKey, Gson().toJson(lessons))
+    }
+}
+
+private fun loadLessonsFromPrefs(
+    prefs: SharedPreferences,
+    versionKey: String,
+    dataKey: String,
+    expectedVersion: Int,
+    forceCustomFlag: Boolean
+): List<Lesson> {
+    val version = prefs.getInt(versionKey, 0)
+    if (version != expectedVersion) {
         prefs.edit {
-            remove("data")
+            remove(dataKey)
         }
-        return null
+        return emptyList()
     }
 
-    val json = prefs.getString("data", null) ?: return null
+    val json = prefs.getString(dataKey, null) ?: return emptyList()
 
     return try {
         val stored = Gson().fromJson(json, Array<StoredLesson>::class.java)?.toList().orEmpty()
 
-        val lessons = stored.mapNotNull { item ->
+        stored.mapNotNull { item ->
             val subject = item.subject?.trim().orEmpty()
             val day = item.day?.trim().orEmpty()
             val time = item.time?.trim().orEmpty()
@@ -960,25 +1065,48 @@ fun loadSchedule(context: Context): List<Lesson>? {
                 return@mapNotNull null
             }
 
-            Lesson(
+            val lesson = Lesson(
+                id = item.id?.trim().orEmpty(),
                 subject = subject,
                 teacher = item.teacher?.trim().orEmpty(),
                 room = item.room?.trim().orEmpty(),
                 day = day,
                 time = time,
                 type = item.type?.trim().orEmpty().ifBlank { "other" },
-                weekPattern = normalizeWeekPatternCode(item.weekPattern)
+                weekPattern = normalizeWeekPatternCode(item.weekPattern),
+                isCustom = forceCustomFlag || item.isCustom == true
             )
+
+            if (lesson.isCustom) {
+                normalizeCustomLesson(lesson)
+            } else {
+                lesson.copy(isCustom = false)
+            }
         }
 
-        lessons.ifEmpty { null }
-
     } catch (_: Exception) {
-        null
+        emptyList()
     }
 }
 
+private fun normalizeCustomLesson(lesson: Lesson): Lesson {
+    return lesson.copy(
+        id = lesson.id.ifBlank { UUID.randomUUID().toString() },
+        day = normalizeDayForUi(lesson.day),
+        type = lesson.type.ifBlank { "other" },
+        weekPattern = normalizeWeekPatternCode(lesson.weekPattern),
+        isCustom = true
+    )
+}
 
+private fun refreshScheduleSurfaces(context: Context) {
+    runCatching {
+        ScheduleWidgetProvider.refreshAll(context)
+    }
+    runCatching {
+        ScheduleWidgetSnapshotProvider.refreshAll(context)
+    }
+}
 
 fun saveCurrentResults(context: Context, currentResults: CurrentResultsData) {
     val prefs = context.getSharedPreferences("schedule", Context.MODE_PRIVATE)
@@ -1120,3 +1248,9 @@ fun loadWebCredit(context: Context): WebCreditData? {
         null
     }
 }
+
+
+
+
+
+

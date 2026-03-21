@@ -1,4 +1,4 @@
-﻿package cz.tal0052.edisonrozvrh.ui.home
+package cz.tal0052.edisonrozvrh.ui.home
 
 import android.content.Intent
 import android.net.Uri
@@ -6,6 +6,7 @@ import cz.tal0052.edisonrozvrh.R
 import cz.tal0052.edisonrozvrh.app.Lesson
 import cz.tal0052.edisonrozvrh.app.PositionedLesson
 import cz.tal0052.edisonrozvrh.app.buildPositionedLessonsForDay
+import cz.tal0052.edisonrozvrh.app.normalizeDayForUi
 import cz.tal0052.edisonrozvrh.app.normalizeWeekPatternCode
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultItem
 import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
@@ -42,12 +43,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +74,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,6 +88,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.temporal.IsoFields
 import java.util.Locale
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -113,6 +123,8 @@ fun ScheduleScreen(
     lessons: List<Lesson>,
     currentResults: CurrentResultsData?,
     studyInfo: StudyInfoData?,
+    onAddCustomLesson: (Lesson) -> Unit,
+    onDeleteCustomLesson: (String) -> Unit,
     onRefreshFromEdison: () -> Unit
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(HomeTab.SCHEDULE) }
@@ -132,7 +144,11 @@ fun ScheduleScreen(
                 .background(MaterialTheme.colorScheme.background)
         ) {
             when (selectedTab) {
-                HomeTab.SCHEDULE -> ScheduleGridTab(lessons)
+                HomeTab.SCHEDULE -> ScheduleGridTab(
+                    lessons = lessons,
+                    onAddCustomLesson = onAddCustomLesson,
+                    onDeleteCustomLesson = onDeleteCustomLesson
+                )
                 HomeTab.UNIVERSITY -> StudyInfoTab(
                     studyInfo = studyInfo,
                     onRefreshFromEdison = onRefreshFromEdison
@@ -220,7 +236,11 @@ private fun EdisonBottomNavigation(
 }
 
 @Composable
-private fun ScheduleGridTab(lessons: List<Lesson>) {
+private fun ScheduleGridTab(
+    lessons: List<Lesson>,
+    onAddCustomLesson: (Lesson) -> Unit,
+    onDeleteCustomLesson: (String) -> Unit
+) {
     val dayOrder = listOf("Pondeli", "Utery", "Streda", "Ctvrtek", "Patek")
     val dayLabels = mapOf(
         "Pondeli" to "Po",
@@ -229,6 +249,8 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
         "Ctvrtek" to "Ct",
         "Patek" to "Pa"
     )
+    var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var pendingDeletion by remember { mutableStateOf<Lesson?>(null) }
 
     val lessonsByDay = remember(lessons) {
         dayOrder.associateWith { day -> buildPositionedLessonsForDay(lessons, day) }
@@ -296,13 +318,25 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
-                contentAlignment = Alignment.Center
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("VT", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                OutlinedButton(
+                    onClick = { isAddDialogVisible = true },
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text("Pridat")
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("VT", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                }
             }
         }
 
@@ -339,7 +373,7 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f))
             ) {
                 Text(
-                    text = "V tomhle t\u00fddnu nejsou v rozvrhu \u017e\u00e1dn\u00e9 hodiny.",
+                    text = "V tomhle tydnu nejsou v rozvrhu zadne hodiny.",
                     modifier = Modifier.padding(20.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 16.sp
@@ -466,7 +500,8 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
                                         item = item,
                                         cardWidth = widthValue,
                                         cardHeight = lessonRowHeight,
-                                        currentWeekParity = currentWeekParity
+                                        currentWeekParity = currentWeekParity,
+                                        onRequestDeleteCustomLesson = { lesson -> pendingDeletion = lesson }
                                     )
                                     slotIndex += span.coerceAtLeast(1)
                                 } else {
@@ -493,6 +528,44 @@ private fun ScheduleGridTab(lessons: List<Lesson>) {
             }
         }
     }
+
+    if (isAddDialogVisible) {
+        AddCustomActivityDialog(
+            onDismiss = { isAddDialogVisible = false },
+            onConfirm = { lesson ->
+                isAddDialogVisible = false
+                onAddCustomLesson(lesson)
+            }
+        )
+    }
+
+    pendingDeletion?.let { lesson ->
+        AlertDialog(
+            onDismissRequest = { pendingDeletion = null },
+            title = {
+                Text("Smazat aktivitu")
+            },
+            text = {
+                Text("Odebrat aktivitu ${lesson.subject} z rozvrhu?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteCustomLesson(lesson.id)
+                        pendingDeletion = null
+                    }
+                ) {
+                    Text("Smazat")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeletion = null }) {
+                    Text("Zrusit")
+                }
+            }
+        )
+    }
+
 }
 
 @Composable
@@ -500,7 +573,8 @@ private fun GridLessonCard(
     item: PositionedLesson,
     cardWidth: Dp,
     cardHeight: Dp,
-    currentWeekParity: WeekParity
+    currentWeekParity: WeekParity,
+    onRequestDeleteCustomLesson: (Lesson) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -519,6 +593,13 @@ private fun GridLessonCard(
             .ifBlank { cleanedRoomText }
     }
     val hasMapTarget = remember(mapQuery) { mapQuery.any { it.isLetterOrDigit() } }
+    val teacherLineText = remember(item.lesson.teacher, item.lesson.isCustom) {
+        if (item.lesson.isCustom) {
+            item.lesson.teacher.ifBlank { "Vlastni aktivita" }
+        } else {
+            item.lesson.teacher.ifBlank { "-" }
+        }
+    }
     Card(
         modifier = Modifier
             .width(cardWidth)
@@ -552,24 +633,26 @@ private fun GridLessonCard(
                     )
                 }
 
-                if (weekParity != WeekParity.EVERY) {
-                    Text(
-                        text = weekParity.label,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = palette.title,
-                        modifier = Modifier
-                            .background(
-                                color = palette.border.copy(alpha = 0.18f),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = palette.border.copy(alpha = 0.44f),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (item.lesson.isCustom) {
+                        SmallLessonBadge(
+                            label = "Vlastni",
+                            background = palette.border.copy(alpha = 0.18f),
+                            border = palette.border.copy(alpha = 0.44f),
+                            textColor = palette.title
+                        )
+                    }
+                    if (weekParity != WeekParity.EVERY) {
+                        SmallLessonBadge(
+                            label = weekParity.label,
+                            background = palette.border.copy(alpha = 0.18f),
+                            border = palette.border.copy(alpha = 0.44f),
+                            textColor = palette.title
+                        )
+                    }
                 }
             }
 
@@ -577,8 +660,12 @@ private fun GridLessonCard(
 
             CardMetaLine(
                 iconRes = R.drawable.ic_teacher,
-                text = item.lesson.teacher.ifBlank { "-" },
-                textColor = palette.meta
+                text = teacherLineText,
+                textColor = palette.meta,
+                actionLabel = if (item.lesson.isCustom) "Smazat" else null,
+                onActionClick = if (!item.lesson.isCustom) null else {
+                    { onRequestDeleteCustomLesson(item.lesson) }
+                }
             )
 
             Spacer(modifier = Modifier.height(6.dp))
@@ -655,6 +742,643 @@ private fun CardMetaLine(
     }
 }
 
+@Composable
+private fun SmallLessonBadge(
+    label: String,
+    background: Color,
+    border: Color,
+    textColor: Color
+) {
+    Text(
+        text = label,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = textColor,
+        modifier = Modifier
+            .background(
+                color = background,
+                shape = RoundedCornerShape(10.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = border,
+                shape = RoundedCornerShape(10.dp)
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    )
+}
+
+@Composable
+private fun AddCustomActivityDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (Lesson) -> Unit
+) {
+    val timeSlots = remember { predefinedCustomTimeSlots() }
+    val startOptions = remember(timeSlots) { timeSlots.map { slot -> slot.first }.distinct() }
+    val endOptions = remember(timeSlots) { timeSlots.map { slot -> slot.second }.distinct() }
+    var subject by rememberSaveable { mutableStateOf("") }
+    var selectedDay by rememberSaveable { mutableStateOf("Pondeli") }
+    var selectedStartMinutes by rememberSaveable { mutableStateOf(startOptions.first()) }
+    var selectedEndMinutes by rememberSaveable {
+        mutableStateOf(endOptions.first { minutes -> minutes > startOptions.first() })
+    }
+    var room by rememberSaveable { mutableStateOf("") }
+    var detail by rememberSaveable { mutableStateOf("") }
+    var selectedColorType by rememberSaveable { mutableStateOf("other") }
+    var weekPattern by rememberSaveable { mutableStateOf("every") }
+    var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    val dayOptions = listOf(
+        "Pondeli" to "Pondeli",
+        "Utery" to "Utery",
+        "Streda" to "Streda",
+        "Ctvrtek" to "Ctvrtek",
+        "Patek" to "Patek"
+    )
+    val colorOptions = listOf(
+        CustomColorChoice("other", "Sedosmodra", lessonTypePaletteForGrid("other").border),
+        CustomColorChoice("cviko", "Modra", lessonTypePaletteForGrid("cviko").border),
+        CustomColorChoice("prednaska", "Cervena", lessonTypePaletteForGrid("prednaska").border),
+        CustomColorChoice("lab", "Zelena", lessonTypePaletteForGrid("lab").border),
+        CustomColorChoice("sport", "Zluta", lessonTypePaletteForGrid("sport").border)
+    )
+    val weekOptions = listOf(
+        "every" to "Kazdy tyden",
+        "odd" to "Lichy tyden",
+        "even" to "Sudy tyden"
+    )
+    val endBoundaryOptions = remember(selectedStartMinutes, endOptions) {
+        endOptions.filter { minutes -> minutes > selectedStartMinutes }
+    }
+    val safeSelectedEndMinutes = if (selectedEndMinutes in endBoundaryOptions) {
+        selectedEndMinutes
+    } else {
+        endBoundaryOptions.first()
+    }
+    val selectedDayLabel = dayOptions.first { it.first == selectedDay }.second
+    val selectedWeekLabel = weekOptions.first { it.first == weekPattern }.second
+    val previewPalette = lessonTypePaletteForGrid(selectedColorType)
+    val previewTitle = subject.trim().ifBlank { "Nova aktivita" }
+    val previewTeacher = detail.trim().ifBlank { "Vlastni aktivita" }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 24.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Pridat aktivitu",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            text = "Rucne pridana polozka se ulozi do rozvrhu i widgetu.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+
+                    SmallLessonBadge(
+                        label = "Vlastni",
+                        background = previewPalette.border.copy(alpha = 0.14f),
+                        border = previewPalette.border.copy(alpha = 0.34f),
+                        textColor = previewPalette.title
+                    )
+                }
+
+                Card(
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(containerColor = previewPalette.container),
+                    border = BorderStroke(1.dp, previewPalette.border)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text(
+                                text = previewTitle,
+                                modifier = Modifier.weight(1f),
+                                color = previewPalette.title,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                maxLines = 2,
+                                lineHeight = 20.sp
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "$selectedDayLabel  ${minutesToEditorLabel(selectedStartMinutes)}-${minutesToEditorLabel(safeSelectedEndMinutes)}",
+                                color = previewPalette.meta,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        Text(
+                            text = previewTeacher,
+                            color = previewPalette.meta,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = room.trim().ifBlank { "Bez mistnosti" },
+                                color = previewPalette.meta,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            SmallLessonBadge(
+                                label = selectedWeekLabel,
+                                background = previewPalette.border.copy(alpha = 0.14f),
+                                border = previewPalette.border.copy(alpha = 0.30f),
+                                textColor = previewPalette.title
+                            )
+                        }
+                    }
+                }
+
+                DialogSectionCard(title = "Nazev a detail") {
+                    OutlinedTextField(
+                        value = subject,
+                        onValueChange = {
+                            subject = it
+                            errorMessage = null
+                        },
+                        label = { Text("Nazev") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = room,
+                        onValueChange = {
+                            room = it
+                            errorMessage = null
+                        },
+                        label = { Text("Mistnost (volitelne)") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = detail,
+                        onValueChange = {
+                            detail = it
+                            errorMessage = null
+                        },
+                        label = { Text("Detail (volitelne)") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                DialogSectionCard(title = "Kdy") {
+                    Text(
+                        text = "Den",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SelectionPillRow(
+                        options = dayOptions,
+                        selectedKey = selectedDay,
+                        onSelect = { value ->
+                            selectedDay = value
+                            errorMessage = null
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        DropdownSelectionField(
+                            label = "Od",
+                            value = minutesToEditorLabel(selectedStartMinutes),
+                            options = startOptions.map { minutes ->
+                                DropdownOption(
+                                    key = minutes.toString(),
+                                    label = minutesToEditorLabel(minutes)
+                                )
+                            },
+                            onSelect = { value ->
+                                val newStartMinutes = value.toInt()
+                                selectedStartMinutes = newStartMinutes
+                                if (safeSelectedEndMinutes <= newStartMinutes) {
+                                    selectedEndMinutes = endOptions.first { it > newStartMinutes }
+                                }
+                                errorMessage = null
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        DropdownSelectionField(
+                            label = "Do",
+                            value = minutesToEditorLabel(safeSelectedEndMinutes),
+                            options = endBoundaryOptions.map { minutes ->
+                                DropdownOption(
+                                    key = minutes.toString(),
+                                    label = minutesToEditorLabel(minutes)
+                                )
+                            },
+                            onSelect = { value ->
+                                selectedEndMinutes = value.toInt()
+                                errorMessage = null
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                DialogSectionCard(title = "Vzhled") {
+                    Text(
+                        text = "Barva aktivity",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ColorSelectionPillRow(
+                        options = colorOptions,
+                        selectedKey = selectedColorType,
+                        onSelect = { value ->
+                            selectedColorType = value
+                            errorMessage = null
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Opakovani",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SelectionPillRow(
+                        options = weekOptions,
+                        selectedKey = weekPattern,
+                        onSelect = { value ->
+                            weekPattern = value
+                            errorMessage = null
+                        }
+                    )
+                }
+
+                Text(
+                    text = "Cas vybiras z pripravenych slotu rozvrhu.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+
+                errorMessage?.let { message ->
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.24f))
+                    ) {
+                        Text(
+                            text = message,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Zrusit")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val validation = validateCustomLesson(
+                                subject = subject,
+                                day = selectedDay,
+                                startMinutes = selectedStartMinutes,
+                                endMinutes = safeSelectedEndMinutes,
+                                room = room,
+                                detail = detail,
+                                colorType = selectedColorType,
+                                weekPattern = weekPattern
+                            )
+                            val lesson = validation.lesson
+                            if (lesson != null) {
+                                onConfirm(lesson)
+                            } else {
+                                errorMessage = validation.errorMessage
+                            }
+                        },
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+                        Text("Ulozit")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogSectionCard(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SelectionPillRow(
+    options: List<Pair<String, String>>,
+    selectedKey: String,
+    onSelect: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        options.forEach { option ->
+            SelectionPill(
+                label = option.second,
+                selected = option.first == selectedKey,
+                accent = MaterialTheme.colorScheme.primary,
+                onClick = { onSelect(option.first) }
+            )
+        }
+    }
+}
+
+private data class CustomColorChoice(
+    val key: String,
+    val label: String,
+    val accent: Color
+)
+
+@Composable
+private fun ColorSelectionPillRow(
+    options: List<CustomColorChoice>,
+    selectedKey: String,
+    onSelect: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        options.forEach { option ->
+            SelectionPill(
+                label = option.label,
+                selected = option.key == selectedKey,
+                accent = option.accent,
+                leadingColor = option.accent,
+                onClick = { onSelect(option.key) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectionPill(
+    label: String,
+    selected: Boolean,
+    accent: Color,
+    onClick: () -> Unit,
+    leadingColor: Color? = null
+) {
+    Row(
+        modifier = Modifier
+            .background(
+                color = if (selected) accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.52f),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) accent.copy(alpha = 0.48f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (leadingColor != null) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(leadingColor, CircleShape)
+                    .border(1.dp, leadingColor.copy(alpha = 0.38f), CircleShape)
+            )
+        }
+        Text(
+            text = label,
+            color = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp
+        )
+    }
+}
+
+private data class DropdownOption(
+    val key: String,
+    val label: String
+)
+
+@Composable
+private fun DropdownSelectionField(
+    label: String,
+    value: String,
+    options: List<DropdownOption>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = true },
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.54f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 13.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = value,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        text = "Zmenit",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.label) },
+                        onClick = {
+                            expanded = false
+                            onSelect(option.key)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class CustomLessonValidationResult(
+    val lesson: Lesson? = null,
+    val errorMessage: String? = null
+)
+
+private fun validateCustomLesson(
+    subject: String,
+    day: String,
+    startMinutes: Int,
+    endMinutes: Int,
+    room: String,
+    detail: String,
+    colorType: String,
+    weekPattern: String
+): CustomLessonValidationResult {
+    val normalizedSubject = subject.trim()
+    if (normalizedSubject.isBlank()) {
+        return CustomLessonValidationResult(errorMessage = "Nazev aktivity je povinny.")
+    }
+
+    if (endMinutes <= startMinutes) {
+        return CustomLessonValidationResult(errorMessage = "Cas konce musi byt pozdeji nez zacatek.")
+    }
+
+    return CustomLessonValidationResult(
+        lesson = Lesson(
+            id = UUID.randomUUID().toString(),
+            subject = normalizedSubject,
+            teacher = detail.trim(),
+            room = room.trim(),
+            day = normalizeDayForUi(day),
+            time = "${minutesToEditorLabel(startMinutes)} - ${minutesToEditorLabel(endMinutes)}",
+            type = normalizeCustomColorType(colorType),
+            weekPattern = normalizeWeekPatternCode(weekPattern),
+            isCustom = true
+        )
+    )
+}
+
+private fun predefinedCustomTimeSlots(): List<Pair<Int, Int>> {
+    return buildTeachingSlots(emptyList())
+}
+
+private fun normalizeCustomColorType(rawType: String): String {
+    return when (rawType.trim().lowercase(Locale.ROOT)) {
+        "cviko", "prednaska", "lab", "sport" -> rawType.trim().lowercase(Locale.ROOT)
+        else -> "other"
+    }
+}
+
+private fun minutesToEditorLabel(totalMinutes: Int): String {
+    val hour = totalMinutes / 60
+    val minute = totalMinutes % 60
+    return String.format(Locale.ROOT, "%02d:%02d", hour, minute)
+}
 @Composable
 private fun lessonTypePaletteForGrid(type: String): LessonTypePalette {
     val accent = when (type.trim().lowercase(Locale.ROOT)) {
@@ -1619,7 +2343,7 @@ private fun EmailPreviewTab() {
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Tohle je jen navrat UI obrazovky pro Email. Nacitaní posty, login i otevirani zprav jsou ted vypnute.",
+                    text = "Tohle je jen navrat UI obrazovky pro Email. Nacitan� posty, login i otevirani zprav jsou ted vypnute.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
@@ -1905,6 +2629,14 @@ private fun toWeekParity(rawPattern: String): WeekParity {
         else -> WeekParity.EVERY
     }
 }
+
+
+
+
+
+
+
+
 
 
 
