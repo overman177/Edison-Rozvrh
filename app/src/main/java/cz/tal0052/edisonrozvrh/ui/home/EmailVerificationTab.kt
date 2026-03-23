@@ -1,7 +1,9 @@
 package cz.tal0052.edisonrozvrh.ui.home
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -52,16 +55,16 @@ fun EmailVerificationTab() {
     var username by remember { mutableStateOf(storedCredentials?.username.orEmpty()) }
     var password by remember { mutableStateOf(storedCredentials?.password.orEmpty()) }
     var isLoading by remember { mutableStateOf(false) }
-    var verificationResult by remember { mutableStateOf<RoundcubeInboxFetchResult?>(null) }
+    var result by remember { mutableStateOf<RoundcubeInboxFetchResult?>(null) }
 
-    fun runVerification() {
+    fun refreshInbox() {
         if (isLoading) return
 
         val normalizedUsername = username.trim()
         if (normalizedUsername.isBlank() || password.isBlank()) {
-            verificationResult = RoundcubeInboxFetchResult(
+            result = RoundcubeInboxFetchResult(
                 success = false,
-                usernameUsed = "",
+                usernameUsed = normalizedUsername,
                 statusCode = 0,
                 responseHtml = "",
                 responseHeaders = emptyMap(),
@@ -71,10 +74,9 @@ fun EmailVerificationTab() {
         }
 
         isLoading = true
-        verificationResult = null
 
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
+            val freshResult = withContext(Dispatchers.IO) {
                 RoundcubeLoginClient(
                     transport = RoundcubeOkHttpTransport()
                 ).loginAndFetchInbox(
@@ -83,12 +85,25 @@ fun EmailVerificationTab() {
                 )
             }
 
-            verificationResult = result
-            if (result.success) {
+            result = freshResult
+            if (freshResult.success) {
                 saveEdisonCredentials(context, normalizedUsername, password)
             }
             isLoading = false
         }
+    }
+
+    val statusTitle = when {
+        isLoading -> "Nacitam inbox"
+        result == null -> "Pripraveno"
+        result?.success == true -> "Inbox nacten"
+        else -> "Nacteni selhalo"
+    }
+    val statusBody = when {
+        isLoading -> "Roundcube overuje login a stahuje zpravy."
+        result?.success == true -> result?.inboxPage?.countText?.ifBlank { "Zpravy byly nacteny." }.orEmpty()
+        result != null -> result?.errorMessage?.ifBlank { "Roundcube vratil chybu." }.orEmpty()
+        else -> "Nahoře muzes kdykoli kliknout na Obnovit."
     }
 
     Column(
@@ -96,98 +111,75 @@ fun EmailVerificationTab() {
             .fillMaxSize()
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = "Email",
-            fontSize = 42.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "Roundcube verification",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium
-        )
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)
-            ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "Tahle verze zatim umi jen ověřit login a načíst inbox přes uložené credentials.",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 15.sp,
-                    lineHeight = 21.sp
+                    text = "Email",
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Predvyplneno z centralniho loginu. Kdyz Roundcube vrati 401, muzes to tady rovnou upravit a zkusit znovu.",
+                    text = "Roundcube inbox",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
                 )
+            }
 
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Roundcube username") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Roundcube heslo") },
-                    singleLine = true,
-                    visualTransformation = if (password.isEmpty()) {
-                        VisualTransformation.None
-                    } else {
-                        PasswordVisualTransformation()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Button(
-                    onClick = ::runVerification,
-                    enabled = !isLoading,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (isLoading) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircularProgressIndicator(
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.height(18.dp)
-                            )
-                            Text("Overuji Roundcube")
-                        }
-                    } else {
-                        Text("Overit login a inbox")
+            Button(
+                onClick = ::refreshInbox,
+                enabled = !isLoading,
+                modifier = Modifier.padding(top = 6.dp)
+            ) {
+                if (isLoading) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.height(16.dp)
+                        )
+                        Text("Obnovuji")
                     }
+                } else {
+                    Text("Obnovit")
                 }
             }
         }
 
-        verificationResult?.let { result ->
-            Spacer(modifier = Modifier.height(12.dp))
-            VerificationResultCard(result = result)
+        StatusCard(
+            title = statusTitle,
+            body = statusBody,
+            isLoading = isLoading,
+            isSuccess = result?.success == true
+        )
+
+        CredentialCard(
+            username = username,
+            password = password,
+            onUsernameChange = { username = it },
+            onPasswordChange = { password = it }
+        )
+
+        result?.let { loadedResult ->
+            InboxSummaryCard(result = loadedResult)
+            loadedResult.inboxPage?.messages?.take(6)?.let { messages ->
+                if (messages.isNotEmpty()) {
+                    InboxPreviewCard(messages = messages)
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(72.dp))
@@ -195,34 +187,136 @@ fun EmailVerificationTab() {
 }
 
 @Composable
-private fun VerificationResultCard(result: RoundcubeInboxFetchResult) {
-    val accent = if (result.success) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.error
+private fun StatusCard(
+    title: String,
+    body: String,
+    isLoading: Boolean,
+    isSuccess: Boolean
+) {
+    val accent = when {
+        isLoading -> MaterialTheme.colorScheme.primary
+        isSuccess -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.outline
     }
 
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.60f)
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)
         ),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.45f)),
-        modifier = Modifier.fillMaxWidth()
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.28f))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .background(accent.copy(alpha = 0.18f), CircleShape)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = title,
+                        color = accent,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Text(
+                text = body,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 15.sp,
+                lineHeight = 21.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun CredentialCard(
+    username: String,
+    password: String,
+    onUsernameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.56f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                text = if (result.success) "Roundcube overeni proslo" else "Roundcube overeni selhalo",
-                color = accent,
+                text = "Prihlaseni",
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Predvyplneno z centralniho loginu. Kdyz vrati 401, uprav to tady a zkus Obnovit znovu.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+                lineHeight = 19.sp
+            )
+
+            OutlinedTextField(
+                value = username,
+                onValueChange = onUsernameChange,
+                label = { Text("Roundcube username") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = onPasswordChange,
+                label = { Text("Roundcube heslo") },
+                singleLine = true,
+                visualTransformation = if (password.isEmpty()) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun InboxSummaryCard(result: RoundcubeInboxFetchResult) {
+    val accent = if (result.success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)
+        ),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.28f))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = if (result.success) "Spojeni s Roundcube je aktivni" else "Roundcube vratil chybu",
+                color = accent,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.Bold
             )
 
             Text(
-                text = "Pouzite jmeno: ${result.usernameUsed.ifBlank { "-" }}",
+                text = "Pouzity ucet: ${result.usernameUsed.ifBlank { "-" }}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp
             )
@@ -233,23 +327,7 @@ private fun VerificationResultCard(result: RoundcubeInboxFetchResult) {
                 fontSize = 13.sp
             )
 
-            result.errorMessage?.let { message ->
-                Text(
-                    text = message,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
-                )
-            }
-
             result.inboxPage?.let { inbox ->
-                Text(
-                    text = inbox.countText.ifBlank { "Inbox byl nacten." },
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-
                 if (inbox.folders.isNotEmpty()) {
                     Text(
                         text = "Slozky: ${inbox.folders.joinToString { folder -> folder.name }}",
@@ -258,41 +336,103 @@ private fun VerificationResultCard(result: RoundcubeInboxFetchResult) {
                         lineHeight = 19.sp
                     )
                 }
+            }
 
-                inbox.messages.take(6).forEach { message ->
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
-                        ),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
+            result.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboxPreviewCard(
+    messages: List<cz.tal0052.edisonrozvrh.data.parser.RoundcubeInboxMessage>
+) {
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Inbox preview",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            messages.forEach { message ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+                            shape = RoundedCornerShape(18.dp)
+                        )
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                color = if (message.unread) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+                                } else {
+                                    MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                                },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = message.sender.ifBlank { "Neznamy odesilatel" },
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 14.sp,
-                                fontWeight = if (message.unread) FontWeight.Bold else FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = message.subject,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 13.sp,
-                                lineHeight = 18.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = listOf(message.date, message.size).filter { it.isNotBlank() }.joinToString(" • "),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp
-                            )
-                        }
+                        Text(
+                            text = if (message.unread) "NEW" else "MAIL",
+                            color = if (message.unread) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = message.sender.ifBlank { "Neznamy odesilatel" },
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 14.sp,
+                            fontWeight = if (message.unread) FontWeight.Bold else FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = message.subject,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = listOf(message.date, message.size).filter { it.isNotBlank() }.joinToString(" | "),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp
+                        )
                     }
                 }
             }
