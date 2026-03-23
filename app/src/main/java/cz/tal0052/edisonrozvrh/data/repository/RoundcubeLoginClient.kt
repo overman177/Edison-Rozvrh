@@ -50,6 +50,13 @@ data class RoundcubeMessageDetailFetchResult(
     val errorMessage: String? = null
 )
 
+data class RoundcubeMessageActionResult(
+    val success: Boolean,
+    val usernameUsed: String,
+    val statusCode: Int,
+    val errorMessage: String? = null
+)
+
 class RoundcubeLoginClient(
     private val transport: RoundcubeLoginTransport,
     private val loginUrl: String = "https://posta.vsb.cz/roundcube/?_task=login",
@@ -242,6 +249,62 @@ class RoundcubeLoginClient(
             responseHtml = loginResponse.body,
             responseHeaders = loginResponse.headers,
             errorMessage = if (rejected) "Roundcube login nebyl prijat." else null
+        )
+    }
+
+    fun setMessageFlag(
+        username: String,
+        password: String,
+        uid: String,
+        flag: String
+    ): RoundcubeMessageActionResult {
+        val loginResult = login(username, password)
+        if (!loginResult.success) {
+            return RoundcubeMessageActionResult(
+                success = false,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = loginResult.statusCode,
+                errorMessage = loginResult.errorMessage
+            )
+        }
+
+        val actionTransport = transport as? RoundcubeMessageActionTransport
+            ?: return RoundcubeMessageActionResult(
+                success = false,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = 0,
+                errorMessage = "Roundcube transport nepodporuje message actions."
+            )
+
+        val shellResponse = transport.get(inboxUrl, refererUrl = loginUrl)
+        if (shellResponse.code !in 200..299) {
+            return RoundcubeMessageActionResult(
+                success = false,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = shellResponse.code,
+                errorMessage = "Roundcube inbox shell pro message action selhal."
+            )
+        }
+
+        val shellPage = RoundcubeMailboxShellParser.parse(shellResponse.body)
+            ?: return RoundcubeMessageActionResult(
+                success = false,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = shellResponse.code,
+                errorMessage = "Roundcube inbox shell ma neocekavanou strukturu."
+            )
+
+        val actionResponse = actionTransport.markMessage(
+            shellPage = shellPage,
+            uid = uid,
+            flag = flag
+        )
+
+        return RoundcubeMessageActionResult(
+            success = actionResponse.code in 200..299,
+            usernameUsed = loginResult.usernameUsed,
+            statusCode = actionResponse.code,
+            errorMessage = if (actionResponse.code in 200..299) null else "Roundcube mark action selhala."
         )
     }
 

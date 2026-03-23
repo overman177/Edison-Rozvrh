@@ -7,6 +7,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,6 +43,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,6 +78,7 @@ fun EmailVerificationTab() {
     var detailResult by remember { mutableStateOf<RoundcubeMessageDetailFetchResult?>(null) }
     var isDetailLoading by remember { mutableStateOf(false) }
     var remoteContentRequested by remember { mutableStateOf(false) }
+    var visibleMessages by remember { mutableStateOf<List<RoundcubeInboxMessage>>(emptyList()) }
 
     fun refreshInbox() {
         if (isInboxLoading) return
@@ -104,6 +110,7 @@ fun EmailVerificationTab() {
             }
 
             inboxResult = freshResult
+            visibleMessages = freshResult.inboxPage?.messages.orEmpty()
             isInboxLoading = false
         }
     }
@@ -129,6 +136,9 @@ fun EmailVerificationTab() {
         detailResult = null
         isDetailLoading = true
         remoteContentRequested = false
+        visibleMessages = visibleMessages.map { current ->
+            if (current.uid == message.uid) current.copy(unread = false) else current
+        }
 
         scope.launch {
             val fetchedDetail = withContext(Dispatchers.IO) {
@@ -141,6 +151,41 @@ fun EmailVerificationTab() {
 
             detailResult = fetchedDetail
             isDetailLoading = false
+        }
+
+        scope.launch(Dispatchers.IO) {
+            client.setMessageFlag(
+                username = storedCredentials.username,
+                password = storedCredentials.password,
+                uid = message.uid,
+                flag = "read"
+            )
+        }
+    }
+
+    fun toggleFlag(message: RoundcubeInboxMessage) {
+        val storedCredentials = credentials ?: return
+        val newFlaggedState = !message.flagged
+
+        visibleMessages = visibleMessages.map { current ->
+            if (current.uid == message.uid) current.copy(flagged = newFlaggedState) else current
+        }
+
+        scope.launch {
+            val actionResult = withContext(Dispatchers.IO) {
+                client.setMessageFlag(
+                    username = storedCredentials.username,
+                    password = storedCredentials.password,
+                    uid = message.uid,
+                    flag = if (newFlaggedState) "flagged" else "unflagged"
+                )
+            }
+
+            if (!actionResult.success) {
+                visibleMessages = visibleMessages.map { current ->
+                    if (current.uid == message.uid) current.copy(flagged = message.flagged) else current
+                }
+            }
         }
     }
 
@@ -175,7 +220,7 @@ fun EmailVerificationTab() {
         }
     }
 
-    val messages = inboxResult?.inboxPage?.messages.orEmpty()
+    val messages = visibleMessages
 
     Column(
         modifier = Modifier
@@ -269,7 +314,8 @@ fun EmailVerificationTab() {
                         ) { message ->
                             InboxMessageRow(
                                 message = message,
-                                onOpenMessage = { openMessage(message) }
+                                onOpenMessage = { openMessage(message) },
+                                onToggleFlag = { toggleFlag(message) }
                             )
                         }
 
@@ -342,7 +388,8 @@ private fun InboxInfoCard(
 @Composable
 private fun InboxMessageRow(
     message: RoundcubeInboxMessage,
-    onOpenMessage: () -> Unit
+    onOpenMessage: () -> Unit,
+    onToggleFlag: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(20.dp),
@@ -366,19 +413,29 @@ private fun InboxMessageRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.Top
         ) {
-            Box(
-                modifier = Modifier
-                    .width(10.dp)
-                    .height(10.dp)
-                    .background(
-                        color = if (message.unread) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-                        },
-                        shape = CircleShape
-                    )
-            )
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(10.dp)
+                        .height(10.dp)
+                        .background(
+                            color = if (message.unread) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                            },
+                            shape = CircleShape
+                        )
+                )
+
+                BookmarkToggle(
+                    flagged = message.flagged,
+                    onClick = onToggleFlag
+                )
+            }
 
             Column(
                 modifier = Modifier.weight(1f),
@@ -418,7 +475,6 @@ private fun InboxMessageRow(
                 val meta = buildList {
                     if (message.size.isNotBlank()) add(message.size)
                     if (message.hasAttachment) add("Priloha")
-                    if (message.flagged) add("Flag")
                 }.joinToString(" | ")
 
                 if (meta.isNotBlank()) {
@@ -428,6 +484,49 @@ private fun InboxMessageRow(
                         fontSize = 12.sp
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookmarkToggle(
+    flagged: Boolean,
+    onClick: () -> Unit
+) {
+    val accent = if (flagged) {
+        Color(0xFFFF3B30)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Box(
+        modifier = Modifier
+            .size(width = 24.dp, height = 28.dp)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val bookmarkPath = Path().apply {
+                moveTo(size.width * 0.22f, size.height * 0.08f)
+                lineTo(size.width * 0.78f, size.height * 0.08f)
+                lineTo(size.width * 0.78f, size.height * 0.90f)
+                lineTo(size.width * 0.50f, size.height * 0.72f)
+                lineTo(size.width * 0.22f, size.height * 0.90f)
+                close()
+            }
+
+            if (flagged) {
+                drawPath(
+                    path = bookmarkPath,
+                    color = accent
+                )
+            } else {
+                drawPath(
+                    path = bookmarkPath,
+                    color = accent,
+                    style = Stroke(width = size.minDimension * 0.10f)
+                )
             }
         }
     }

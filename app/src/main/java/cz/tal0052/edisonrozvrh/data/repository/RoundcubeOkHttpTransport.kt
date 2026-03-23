@@ -9,7 +9,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
-class RoundcubeOkHttpTransport : RoundcubeLoginTransport, RoundcubeRemoteListTransport, RoundcubeCookieProvider {
+class RoundcubeOkHttpTransport : RoundcubeLoginTransport, RoundcubeRemoteListTransport, RoundcubeMessageActionTransport, RoundcubeCookieProvider {
     private val cookieJar = InMemoryCookieJar()
     private val client = OkHttpClient.Builder()
         .cookieJar(cookieJar)
@@ -63,6 +63,41 @@ class RoundcubeOkHttpTransport : RoundcubeLoginTransport, RoundcubeRemoteListTra
             .header("X-Roundcube-Request", shellPage.requestToken)
             .header("X-Requested-With", "XMLHttpRequest")
             .header("Accept", "application/json, text/javascript, */*; q=0.01")
+            .build()
+
+        return execute(request)
+    }
+
+    override fun markMessage(
+        shellPage: RoundcubeMailboxShellPage,
+        uid: String,
+        flag: String
+    ): RoundcubeTransportResponse {
+        val url = shellPage.commPath.toHttpUrlOrNull()
+            ?.newBuilder()
+            ?.setQueryParameter("_action", "mark")
+            ?.build()
+            ?.toString()
+            ?: shellPage.commPath
+
+        val request = baseRequest(url, shellPage.commPath)
+            .header("Origin", "https://posta.vsb.cz")
+            .header("X-Roundcube-Request", shellPage.requestToken)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("Accept", "application/json, text/javascript, */*; q=0.01")
+            .post(
+                RoundcubeLoginRequest(
+                    actionUrl = url,
+                    refererUrl = shellPage.commPath,
+                    parameters = linkedMapOf(
+                        "_uid" to uid,
+                        "_flag" to flag,
+                        "_mbox" to shellPage.mailbox,
+                        "_remote" to "1",
+                        "_quiet" to "1"
+                    )
+                ).toFormBody()
+            )
             .build()
 
         return execute(request)
