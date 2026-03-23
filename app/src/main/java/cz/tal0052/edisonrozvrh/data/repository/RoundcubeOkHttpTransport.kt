@@ -39,6 +39,7 @@ class RoundcubeOkHttpTransport : RoundcubeLoginTransport, RoundcubeRemoteListTra
 
     override fun fetchRemoteList(
         shellPage: RoundcubeMailboxShellPage,
+        page: Int,
         includeRefresh: Boolean
     ): RoundcubeTransportResponse {
         val url = HttpUrl.Builder()
@@ -49,7 +50,7 @@ class RoundcubeOkHttpTransport : RoundcubeLoginTransport, RoundcubeRemoteListTra
             .addQueryParameter("_action", "list")
             .addQueryParameter("_layout", shellPage.layout)
             .addQueryParameter("_mbox", shellPage.mailbox)
-            .addQueryParameter("_page", shellPage.currentPage.toString())
+            .addQueryParameter("_page", page.toString())
             .addQueryParameter("_remote", "1")
             .addQueryParameter("_unlock", "0")
             .apply {

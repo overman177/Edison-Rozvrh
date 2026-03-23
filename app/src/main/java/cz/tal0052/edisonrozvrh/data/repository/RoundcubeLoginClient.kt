@@ -82,7 +82,11 @@ class RoundcubeLoginClient(
         )
     }
 
-    fun loginAndFetchInbox(username: String, password: String): RoundcubeInboxFetchResult {
+    fun loginAndFetchInbox(
+        username: String,
+        password: String,
+        page: Int = 1
+    ): RoundcubeInboxFetchResult {
         val loginResult = login(username, password)
         if (!loginResult.success) {
             return RoundcubeInboxFetchResult(
@@ -117,10 +121,10 @@ class RoundcubeLoginClient(
                 errorMessage = "Roundcube inbox ma neocekavanou strukturu."
             )
 
-        if (inboxPage.messages.isEmpty() && transport is RoundcubeRemoteListTransport) {
+        if (transport is RoundcubeRemoteListTransport) {
             val shellPage = RoundcubeMailboxShellParser.parse(inboxResponse.body)
             if (shellPage != null) {
-                val remotePage = fetchRemoteInboxPage(shellPage)
+                val remotePage = fetchRemoteInboxPage(shellPage, page)
                 if (remotePage != null) {
                     return RoundcubeInboxFetchResult(
                         success = true,
@@ -318,10 +322,17 @@ class RoundcubeLoginClient(
         ).distinct()
     }
 
-    private fun fetchRemoteInboxPage(shellPage: cz.tal0052.edisonrozvrh.data.parser.RoundcubeMailboxShellPage): RoundcubeInboxPage? {
+    private fun fetchRemoteInboxPage(
+        shellPage: cz.tal0052.edisonrozvrh.data.parser.RoundcubeMailboxShellPage,
+        page: Int
+    ): RoundcubeInboxPage? {
         val remoteTransport = transport as? RoundcubeRemoteListTransport ?: return null
 
-        val firstResponse = remoteTransport.fetchRemoteList(shellPage, includeRefresh = false)
+        val firstResponse = remoteTransport.fetchRemoteList(
+            shellPage = shellPage,
+            page = page,
+            includeRefresh = false
+        )
         if (firstResponse.code in 200..299) {
             val firstPage = RoundcubeRemoteListParser.parse(
                 jsonText = firstResponse.body,
@@ -333,7 +344,11 @@ class RoundcubeLoginClient(
             }
         }
 
-        val refreshResponse = remoteTransport.fetchRemoteList(shellPage, includeRefresh = true)
+        val refreshResponse = remoteTransport.fetchRemoteList(
+            shellPage = shellPage,
+            page = page,
+            includeRefresh = true
+        )
         if (refreshResponse.code !in 200..299) return null
 
         return RoundcubeRemoteListParser.parse(

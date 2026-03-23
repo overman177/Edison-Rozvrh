@@ -260,6 +260,7 @@ class RoundcubeLoginClientTest {
 
         override fun fetchRemoteList(
             shellPage: cz.tal0052.edisonrozvrh.data.parser.RoundcubeMailboxShellPage,
+            page: Int,
             includeRefresh: Boolean
         ): RoundcubeTransportResponse {
             return remoteResponses.removeFirstOrNull()

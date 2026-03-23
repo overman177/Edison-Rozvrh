@@ -13,7 +13,7 @@ class RoundcubeRemoteListParserTest {
     fun parse_handlesFlaggedRowsFromRoundcubeExecPayload() {
         val json = """
             {
-              "exec": "this.set_rowcount('INBOX','Messages 1 to 1 of 1');rcmail.add_message_row('123',{\"fromto\":\"<span>news@vsb.cz</span>\",\"subject\":\"<a href=\\\"/roundcube/?_task=mail&_mbox=INBOX&_uid=123&_action=show\\\">Flagged mail</a>\",\"date\":\"Today 08:00\",\"size\":\"10 KB\"},{\"mbox\":\"INBOX\",\"seen\":\"true\",\"flagged\":\"flagged\",\"hasattachment\":\"1\"},false);"
+              "exec": "this.set_rowcount('Messages 1 to 1 of 1','INBOX');rcmail.add_message_row('123',{\"fromto\":\"<span>news@vsb.cz</span>\",\"subject\":\"<a href=\\\"/roundcube/?_task=mail&_mbox=INBOX&_uid=123&_action=show\\\">Flagged mail</a>\",\"date\":\"Today 08:00\",\"size\":\"10 KB\"},{\"mbox\":\"INBOX\",\"seen\":\"true\",\"flagged\":\"flagged\",\"hasattachment\":\"1\"},false);"
             }
         """.trimIndent()
 

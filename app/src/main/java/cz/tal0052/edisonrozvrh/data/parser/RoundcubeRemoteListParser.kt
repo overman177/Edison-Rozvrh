@@ -16,11 +16,11 @@ object RoundcubeRemoteListParser {
         val exec = response.get("exec")?.asString?.trim().orEmpty()
         if (exec.isBlank()) return null
 
-        val countMatch = SET_ROWCOUNT_REGEX.find(exec)
-        val countText = countMatch
-            ?.groupValues
-            ?.getOrNull(4)
-            ?.ifBlank { countMatch.groupValues.getOrNull(2).orEmpty() }
+        val countText = extractCallArguments(exec, "set_rowcount")
+            .firstOrNull()
+            ?.getOrNull(0)
+            ?.trim()
+            ?.trim('"', '\'')
             ?.let { Jsoup.parse(it).text().trim() }
             .orEmpty()
 
@@ -172,6 +172,4 @@ object RoundcubeRemoteListParser {
             else -> false
         }
     }
-
-    private val SET_ROWCOUNT_REGEX = Regex("""set_rowcount\((['"])(.*?)\1(?:\s*,\s*(['"])(.*?)\3)?""")
 }

@@ -79,8 +79,9 @@ fun EmailVerificationTab() {
     var isDetailLoading by remember { mutableStateOf(false) }
     var remoteContentRequested by remember { mutableStateOf(false) }
     var visibleMessages by remember { mutableStateOf<List<RoundcubeInboxMessage>>(emptyList()) }
+    var currentPage by remember { mutableStateOf(1) }
 
-    fun refreshInbox() {
+    fun refreshInbox(targetPage: Int = currentPage) {
         if (isInboxLoading) return
 
         val storedCredentials = credentials
@@ -100,12 +101,14 @@ fun EmailVerificationTab() {
         openedMessage = null
         detailResult = null
         remoteContentRequested = false
+        currentPage = targetPage.coerceAtLeast(1)
 
         scope.launch {
             val freshResult = withContext(Dispatchers.IO) {
                 client.loginAndFetchInbox(
                     username = storedCredentials.username,
-                    password = storedCredentials.password
+                    password = storedCredentials.password,
+                    page = currentPage
                 )
             }
 
@@ -216,11 +219,25 @@ fun EmailVerificationTab() {
 
     LaunchedEffect(credentials?.username) {
         if (credentials != null && inboxResult == null && !isInboxLoading) {
-            refreshInbox()
+            refreshInbox(1)
         }
     }
 
     val messages = visibleMessages
+    val pageInfo = remember(inboxResult?.inboxPage?.countText, currentPage, messages.size) {
+        parseInboxPageInfo(
+            countText = inboxResult?.inboxPage?.countText.orEmpty(),
+            currentPage = currentPage,
+            loadedCount = messages.size
+        )
+    }
+    val inboxLabel = when {
+        pageInfo != null -> "INBOX · ${pageInfo.total}"
+        inboxResult?.inboxPage?.countText?.isNotBlank() == true &&
+            !inboxResult?.inboxPage?.countText.equals("INBOX", ignoreCase = true) ->
+            "INBOX · ${inboxResult?.inboxPage?.countText}"
+        else -> "INBOX"
+    }
 
     Column(
         modifier = Modifier
@@ -244,7 +261,7 @@ fun EmailVerificationTab() {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = inboxResult?.inboxPage?.countText?.ifBlank { "Roundcube inbox" } ?: "Roundcube inbox",
+                    text = inboxLabel,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
@@ -326,6 +343,24 @@ fun EmailVerificationTab() {
                 }
             }
         }
+
+        if (pageInfo != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            InboxPaginationControls(
+                pageInfo = pageInfo,
+                isLoading = isInboxLoading,
+                onPreviousPage = {
+                    if (pageInfo.hasPreviousPage) {
+                        refreshInbox(pageInfo.previousPage)
+                    }
+                },
+                onNextPage = {
+                    if (pageInfo.hasNextPage) {
+                        refreshInbox(pageInfo.nextPage)
+                    }
+                }
+            )
+        }
     }
 
     if (openedMessage != null) {
@@ -386,24 +421,73 @@ private fun InboxInfoCard(
 }
 
 @Composable
+private fun InboxPaginationControls(
+    pageInfo: InboxPageInfo,
+    isLoading: Boolean,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(
+                onClick = onPreviousPage,
+                enabled = pageInfo.hasPreviousPage && !isLoading
+            ) {
+                Text(pageInfo.previousRangeLabel)
+            }
+
+            Text(
+                text = "${pageInfo.start}-${pageInfo.end}",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Button(
+                onClick = onNextPage,
+                enabled = pageInfo.hasNextPage && !isLoading
+            ) {
+                Text(pageInfo.nextRangeLabel)
+            }
+        }
+    }
+}
+
+@Composable
 private fun InboxMessageRow(
     message: RoundcubeInboxMessage,
     onOpenMessage: () -> Unit,
     onToggleFlag: () -> Unit
 ) {
+    val flaggedAccent = Color(0xFFFF3B30)
+    val containerColor = when {
+        message.flagged -> flaggedAccent.copy(alpha = 0.12f)
+        else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.60f)
+    }
+    val borderColor = when {
+        message.flagged -> flaggedAccent.copy(alpha = if (message.unread) 0.48f else 0.34f)
+        message.unread -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
+        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+    }
+
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.60f)
+            containerColor = containerColor
         ),
-        border = BorderStroke(
-            1.dp,
-            if (message.unread) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
-            } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
-            }
-        ),
+        border = BorderStroke(1.dp, borderColor),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onOpenMessage)
@@ -473,7 +557,6 @@ private fun InboxMessageRow(
                 )
 
                 val meta = buildList {
-                    if (message.size.isNotBlank()) add(message.size)
                     if (message.hasAttachment) add("Priloha")
                 }.joinToString(" | ")
 
@@ -812,3 +895,54 @@ private fun containsPotentialRemoteContent(responseHtml: String, bodyHtml: Strin
         remoteStyleRegex.containsMatchIn(bodyHtml) ||
         anyImageRegex.containsMatchIn(bodyHtml)
 }
+
+private data class InboxPageInfo(
+    val start: Int,
+    val end: Int,
+    val total: Int,
+    val currentPage: Int,
+    val pageSize: Int
+) {
+    val hasPreviousPage: Boolean get() = start > 1
+    val hasNextPage: Boolean get() = end < total
+    val previousPage: Int get() = (currentPage - 1).coerceAtLeast(1)
+    val nextPage: Int get() = currentPage + 1
+
+    val previousRangeLabel: String
+        get() {
+            if (!hasPreviousPage) return "Predchozi"
+            val prevStart = (start - pageSize).coerceAtLeast(1)
+            val prevEnd = start - 1
+            return "$prevStart-$prevEnd"
+        }
+
+    val nextRangeLabel: String
+        get() {
+            if (!hasNextPage) return "Dalsi"
+            val nextStart = end + 1
+            val nextEnd = (end + pageSize).coerceAtMost(total)
+            return "$nextStart-$nextEnd"
+        }
+}
+
+private fun parseInboxPageInfo(
+    countText: String,
+    currentPage: Int,
+    loadedCount: Int
+): InboxPageInfo? {
+    val match = COUNT_RANGE_REGEX.find(countText) ?: return null
+    val start = match.groupValues.getOrNull(1)?.toIntOrNull() ?: return null
+    val end = match.groupValues.getOrNull(2)?.toIntOrNull() ?: return null
+    val total = match.groupValues.getOrNull(3)?.toIntOrNull() ?: return null
+    val pageSize = (end - start + 1).coerceAtLeast(loadedCount.coerceAtLeast(1))
+
+    return InboxPageInfo(
+        start = start,
+        end = end,
+        total = total,
+        currentPage = currentPage,
+        pageSize = pageSize
+    )
+}
+
+private val COUNT_RANGE_REGEX = Regex("""(\d+)\s+to\s+(\d+)\s+of\s+(\d+)""", RegexOption.IGNORE_CASE)
