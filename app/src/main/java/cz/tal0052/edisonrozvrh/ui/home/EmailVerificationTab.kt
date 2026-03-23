@@ -2,6 +2,8 @@ package cz.tal0052.edisonrozvrh.ui.home
 
 import android.annotation.SuppressLint
 import android.graphics.Color as AndroidColor
+import android.webkit.CookieManager
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.BorderStroke
@@ -21,10 +23,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -36,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,6 +51,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import cz.tal0052.edisonrozvrh.data.auth.loadEdisonCredentials
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeInboxMessage
+import cz.tal0052.edisonrozvrh.data.repository.RoundcubeCookieProvider
 import cz.tal0052.edisonrozvrh.data.repository.RoundcubeInboxFetchResult
 import cz.tal0052.edisonrozvrh.data.repository.RoundcubeLoginClient
 import cz.tal0052.edisonrozvrh.data.repository.RoundcubeMessageDetailFetchResult
@@ -63,12 +65,14 @@ fun EmailVerificationTab() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val credentials = remember { loadEdisonCredentials(context) }
-    val client = remember { RoundcubeLoginClient(transport = RoundcubeOkHttpTransport()) }
+    val transport = remember { RoundcubeOkHttpTransport() }
+    val client = remember(transport) { RoundcubeLoginClient(transport = transport) }
     var inboxResult by remember { mutableStateOf<RoundcubeInboxFetchResult?>(null) }
     var isInboxLoading by remember { mutableStateOf(false) }
     var openedMessage by remember { mutableStateOf<RoundcubeInboxMessage?>(null) }
     var detailResult by remember { mutableStateOf<RoundcubeMessageDetailFetchResult?>(null) }
     var isDetailLoading by remember { mutableStateOf(false) }
+    var remoteContentRequested by remember { mutableStateOf(false) }
 
     fun refreshInbox() {
         if (isInboxLoading) return
@@ -89,6 +93,7 @@ fun EmailVerificationTab() {
         isInboxLoading = true
         openedMessage = null
         detailResult = null
+        remoteContentRequested = false
 
         scope.launch {
             val freshResult = withContext(Dispatchers.IO) {
@@ -123,6 +128,7 @@ fun EmailVerificationTab() {
         openedMessage = message
         detailResult = null
         isDetailLoading = true
+        remoteContentRequested = false
 
         scope.launch {
             val fetchedDetail = withContext(Dispatchers.IO) {
@@ -130,6 +136,31 @@ fun EmailVerificationTab() {
                     username = storedCredentials.username,
                     password = storedCredentials.password,
                     detailUrl = message.detailUrl
+                )
+            }
+
+            detailResult = fetchedDetail
+            isDetailLoading = false
+        }
+    }
+
+    fun loadRemoteContent(message: RoundcubeInboxMessage) {
+        if (isDetailLoading) return
+
+        val storedCredentials = credentials
+        if (storedCredentials == null) return
+
+        openedMessage = message
+        isDetailLoading = true
+        remoteContentRequested = true
+
+        scope.launch {
+            val fetchedDetail = withContext(Dispatchers.IO) {
+                client.fetchMessageDetail(
+                    username = storedCredentials.username,
+                    password = storedCredentials.password,
+                    detailUrl = message.detailUrl,
+                    loadRemoteContent = true
                 )
             }
 
@@ -255,10 +286,17 @@ fun EmailVerificationTab() {
         MessageDetailDialog(
             isLoading = isDetailLoading,
             detailResult = detailResult,
+            fallbackBaseUrl = openedMessage?.detailUrl.orEmpty(),
+            cookieProvider = transport,
+            remoteContentRequested = remoteContentRequested,
+            onLoadRemoteContent = openedMessage?.let { message ->
+                { loadRemoteContent(message) }
+            },
             onDismiss = {
                 openedMessage = null
                 detailResult = null
                 isDetailLoading = false
+                remoteContentRequested = false
             }
         )
     }
@@ -399,6 +437,10 @@ private fun InboxMessageRow(
 private fun MessageDetailDialog(
     isLoading: Boolean,
     detailResult: RoundcubeMessageDetailFetchResult?,
+    fallbackBaseUrl: String,
+    cookieProvider: RoundcubeCookieProvider,
+    remoteContentRequested: Boolean,
+    onLoadRemoteContent: (() -> Unit)?,
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -471,6 +513,10 @@ private fun MessageDetailDialog(
                 }
 
                 val detail = detailResult.messageDetail
+                val canLoadRemoteImages = remember(detailResult.responseHtml, detail.bodyHtml) {
+                    containsPotentialRemoteContent(detailResult.responseHtml, detail.bodyHtml)
+                }
+
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -506,6 +552,26 @@ private fun MessageDetailDialog(
                         )
                     }
 
+                    if (canLoadRemoteImages && !remoteContentRequested && onLoadRemoteContent != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Obrazky jsou zatim blokovane kvuli soukromi.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Button(onClick = onLoadRemoteContent) {
+                                Text("Nacist obrazky")
+                            }
+                        }
+                    }
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -519,6 +585,9 @@ private fun MessageDetailDialog(
                         EmailHtmlBodyView(
                             html = detail.bodyHtml,
                             fallbackText = detail.bodyText,
+                            baseUrl = detail.bodyBaseUrl.ifBlank { fallbackBaseUrl },
+                            cookieProvider = cookieProvider,
+                            allowRemoteContent = remoteContentRequested || !canLoadRemoteImages,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -533,11 +602,23 @@ private fun MessageDetailDialog(
 private fun EmailHtmlBodyView(
     html: String,
     fallbackText: String,
+    baseUrl: String,
+    cookieProvider: RoundcubeCookieProvider,
+    allowRemoteContent: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val documentHtml = remember(html, fallbackText) {
+    val resolvedBaseUrl = remember(baseUrl) {
+        baseUrl.ifBlank { "https://posta.vsb.cz/roundcube/" }
+    }
+    val cookieValues = remember(cookieProvider, resolvedBaseUrl, html, fallbackText) {
+        cookieProvider.cookiesFor(resolvedBaseUrl)
+    }
+    val documentHtml = remember(html, fallbackText, resolvedBaseUrl) {
         buildString {
             append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">")
+            append("<base href=\"")
+            append(escapeHtmlAttribute(resolvedBaseUrl))
+            append("\">")
             append(
                 """
                 <style>
@@ -573,12 +654,24 @@ private fun EmailHtmlBodyView(
                 settings.loadsImagesAutomatically = true
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
+                settings.allowContentAccess = true
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 webViewClient = WebViewClient()
             }
         },
         update = { webView ->
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.setAcceptCookie(true)
+            cookieValues.forEach { cookie ->
+                cookieManager.setCookie("https://posta.vsb.cz", cookie)
+                cookieManager.setCookie(resolvedBaseUrl, cookie)
+            }
+            cookieManager.flush()
+            webView.settings.blockNetworkImage = !allowRemoteContent
+
             webView.loadDataWithBaseURL(
-                "https://posta.vsb.cz",
+                resolvedBaseUrl,
                 documentHtml,
                 "text/html",
                 "utf-8",
@@ -596,4 +689,27 @@ private fun escapeHtml(value: String): String {
         .replace("\"", "&quot;")
         .replace("'", "&#39;")
         .replace("\n", "<br>")
+}
+
+private fun escapeHtmlAttribute(value: String): String {
+    return value
+        .replace("&", "&amp;")
+        .replace("\"", "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+}
+
+private fun containsPotentialRemoteContent(responseHtml: String, bodyHtml: String): Boolean {
+    val visibleRemoteWarning = responseHtml.contains("remote resources have been blocked", ignoreCase = true) &&
+        !responseHtml.contains("id=\"remote-objects-message\" class=\"notice\" style=\"display: none\"", ignoreCase = true)
+
+    if (visibleRemoteWarning) return true
+
+    val remoteImageRegex = Regex("""(?i)<img[^>]+src\s*=\s*["'](?:https?:)?//""")
+    val anyImageRegex = Regex("""(?i)<img\b""")
+    val remoteStyleRegex = Regex("""(?i)url\((["']?)(?:https?:)?//""")
+
+    return remoteImageRegex.containsMatchIn(bodyHtml) ||
+        remoteStyleRegex.containsMatchIn(bodyHtml) ||
+        anyImageRegex.containsMatchIn(bodyHtml)
 }

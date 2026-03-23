@@ -4,20 +4,21 @@ import cz.tal0052.edisonrozvrh.data.parser.RoundcubeMailboxShellPage
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
-class RoundcubeOkHttpTransport(
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .cookieJar(InMemoryCookieJar())
+class RoundcubeOkHttpTransport : RoundcubeLoginTransport, RoundcubeRemoteListTransport, RoundcubeCookieProvider {
+    private val cookieJar = InMemoryCookieJar()
+    private val client = OkHttpClient.Builder()
+        .cookieJar(cookieJar)
         .followRedirects(true)
         .followSslRedirects(true)
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .writeTimeout(20, TimeUnit.SECONDS)
         .build()
-) : RoundcubeLoginTransport, RoundcubeRemoteListTransport {
 
     override fun get(url: String, refererUrl: String?): RoundcubeTransportResponse {
         val request = baseRequest(url, refererUrl)
@@ -67,6 +68,10 @@ class RoundcubeOkHttpTransport(
         return execute(request)
     }
 
+    override fun cookiesFor(url: String): List<String> {
+        return cookieJar.cookiesFor(url)
+    }
+
     private fun baseRequest(url: String, refererUrl: String?): Request.Builder {
         return Request.Builder()
             .url(url)
@@ -113,6 +118,16 @@ class RoundcubeOkHttpTransport(
         override fun loadForRequest(url: HttpUrl): List<Cookie> {
             return synchronized(cookies) {
                 cookies.filter { it.matches(url) }
+            }
+        }
+
+        fun cookiesFor(url: String): List<String> {
+            val httpUrl = url.toHttpUrlOrNull() ?: return emptyList()
+
+            return synchronized(cookies) {
+                cookies
+                    .filter { it.matches(httpUrl) }
+                    .map { cookie -> "${cookie.name}=${cookie.value}" }
             }
         }
     }

@@ -27,6 +27,10 @@ class RoundcubeMessageDetailParserFixtureTest {
         assertEquals("EPS - order paid", detail.subject)
         assertEquals("eps-help@vsb.cz", detail.from)
         assertEquals("vojtech.talman.st@vsb.cz", detail.to)
+        assertEquals(
+            "https://posta.vsb.cz/roundcube/?_task=mail&_action=show&_uid=887&_mbox=INBOX",
+            detail.bodyBaseUrl
+        )
         assertTrue(detail.summary.contains("2026-03-19 16:49"))
         assertTrue(detail.bodyHtml.contains("message-part"))
         assertTrue(detail.bodyText.contains("your order No. 881681"))

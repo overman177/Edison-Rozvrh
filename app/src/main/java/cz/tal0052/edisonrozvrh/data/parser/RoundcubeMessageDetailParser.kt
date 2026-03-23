@@ -17,6 +17,7 @@ data class RoundcubeMessageDetail(
     val to: String,
     val date: String,
     val summary: String,
+    val bodyBaseUrl: String,
     val bodyHtml: String,
     val bodyText: String,
     val attachments: List<RoundcubeAttachment>
@@ -34,6 +35,8 @@ object RoundcubeMessageDetailParser {
         val date = doc.selectFirst(".header-headers td.header.date")?.text()?.trim().orEmpty()
         val uid = UID_REGEX.find(html)?.groupValues?.getOrNull(1)?.trim().orEmpty()
         val mailbox = MAILBOX_REGEX.find(html)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+        val permaUrl = PERMA_URL_REGEX.find(html)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+        val extWindowUrl = doc.selectFirst("#message-header a.extwin")?.absUrl("href").orEmpty()
 
         if (subject.isBlank() || uid.isBlank() || mailbox.isBlank()) return null
 
@@ -56,10 +59,21 @@ object RoundcubeMessageDetailParser {
             to = to,
             date = date,
             summary = summary,
+            bodyBaseUrl = resolveBaseUrl(permaUrl, extWindowUrl),
             bodyHtml = body.html().trim(),
             bodyText = extractBodyText(body),
             attachments = attachments
         )
+    }
+
+    private fun resolveBaseUrl(permaUrl: String, extWindowUrl: String): String {
+        return when {
+            permaUrl.startsWith("http://") || permaUrl.startsWith("https://") -> permaUrl
+            permaUrl.startsWith("/") -> "https://posta.vsb.cz$permaUrl"
+            permaUrl.isNotBlank() -> "https://posta.vsb.cz/roundcube/$permaUrl"
+            extWindowUrl.isNotBlank() -> extWindowUrl
+            else -> "https://posta.vsb.cz/roundcube/"
+        }
     }
 
     private fun extractBodyText(element: Element): String {
@@ -72,14 +86,13 @@ object RoundcubeMessageDetailParser {
         return Jsoup.parse(htmlWithBreaks)
             .text()
             .replace(NON_BREAKING_SPACE, ' ')
-            .replace(BAD_NBSP, ' ')
             .replace(Regex("\\s+\\n"), "\n")
             .replace(Regex("\\n{3,}"), "\n\n")
             .trim()
     }
 
     private const val NON_BREAKING_SPACE = '\u00A0'
-    private const val BAD_NBSP = 'Â'
     private val UID_REGEX = Regex(""""uid"\s*:\s*"([^"]+)"""")
     private val MAILBOX_REGEX = Regex(""""mailbox"\s*:\s*"([^"]+)"""")
+    private val PERMA_URL_REGEX = Regex(""""permaurl"\s*:\s*"([^"]+)"""")
 }

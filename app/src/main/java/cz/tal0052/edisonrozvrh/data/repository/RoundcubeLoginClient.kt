@@ -8,6 +8,7 @@ import cz.tal0052.edisonrozvrh.data.parser.RoundcubeMessageDetail
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeMessageDetailParser
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeRemoteListParser
 import java.util.Locale
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 data class RoundcubeTransportResponse(
     val code: Int,
@@ -139,7 +140,8 @@ class RoundcubeLoginClient(
     fun fetchMessageDetail(
         username: String,
         password: String,
-        detailUrl: String
+        detailUrl: String,
+        loadRemoteContent: Boolean = false
     ): RoundcubeMessageDetailFetchResult {
         val loginResult = login(username, password)
         if (!loginResult.success) {
@@ -153,7 +155,8 @@ class RoundcubeLoginClient(
             )
         }
 
-        val detailResponse = transport.get(detailUrl, refererUrl = inboxUrl)
+        val resolvedDetailUrl = resolveDetailUrl(detailUrl, loadRemoteContent)
+        val detailResponse = transport.get(resolvedDetailUrl, refererUrl = inboxUrl)
         if (detailResponse.code !in 200..299) {
             return RoundcubeMessageDetailFetchResult(
                 success = false,
@@ -275,5 +278,15 @@ class RoundcubeLoginClient(
             fallbackFolders = shellPage.folders,
             mailbox = shellPage.mailbox
         )
+    }
+
+    private fun resolveDetailUrl(detailUrl: String, loadRemoteContent: Boolean): String {
+        if (!loadRemoteContent) return detailUrl
+
+        val httpUrl = detailUrl.toHttpUrlOrNull() ?: return detailUrl
+        return httpUrl.newBuilder()
+            .setQueryParameter("_safe", "1")
+            .build()
+            .toString()
     }
 }
