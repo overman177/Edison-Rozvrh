@@ -160,6 +160,32 @@ class RoundcubeLoginClientTest {
         assertTrue(remotePage.messages.last().hasAttachment)
     }
 
+    @Test
+    fun fetchMessageDetail_parsesFixtureDetail() {
+        val transport = FakeRoundcubeLoginTransport(
+            getResponses = ArrayDeque(
+                listOf(
+                    RoundcubeTransportResponse(200, successInboxHtml()),
+                    RoundcubeTransportResponse(200, loadFixture("mail_response.html"))
+                )
+            ),
+            postResponses = ArrayDeque()
+        )
+        val client = RoundcubeLoginClient(transport = transport)
+
+        val result = client.fetchMessageDetail(
+            username = "Tal0052",
+            password = "secret",
+            detailUrl = "https://posta.vsb.cz/roundcube/?_task=mail&_action=show&_uid=887&_mbox=INBOX"
+        )
+
+        assertTrue(result.success)
+        assertNotNull(result.messageDetail)
+        assertEquals("887", result.messageDetail!!.uid)
+        assertEquals("EPS - order paid", result.messageDetail!!.subject)
+        assertTrue(result.messageDetail!!.bodyText.contains("your order No. 881681"))
+    }
+
     private fun successInboxHtml(): String {
         return """
             <!DOCTYPE html>

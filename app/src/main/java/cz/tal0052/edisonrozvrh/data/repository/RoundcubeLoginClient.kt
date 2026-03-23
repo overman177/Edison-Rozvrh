@@ -4,6 +4,8 @@ import cz.tal0052.edisonrozvrh.data.parser.RoundcubeInboxPage
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeInboxParser
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeLoginParser
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeMailboxShellParser
+import cz.tal0052.edisonrozvrh.data.parser.RoundcubeMessageDetail
+import cz.tal0052.edisonrozvrh.data.parser.RoundcubeMessageDetailParser
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeRemoteListParser
 import java.util.Locale
 
@@ -32,6 +34,16 @@ data class RoundcubeInboxFetchResult(
     val usernameUsed: String,
     val statusCode: Int,
     val inboxPage: RoundcubeInboxPage? = null,
+    val responseHtml: String,
+    val responseHeaders: Map<String, String>,
+    val errorMessage: String? = null
+)
+
+data class RoundcubeMessageDetailFetchResult(
+    val success: Boolean,
+    val usernameUsed: String,
+    val statusCode: Int,
+    val messageDetail: RoundcubeMessageDetail? = null,
     val responseHtml: String,
     val responseHeaders: Map<String, String>,
     val errorMessage: String? = null
@@ -121,6 +133,55 @@ class RoundcubeLoginClient(
             inboxPage = inboxPage,
             responseHtml = inboxResponse.body,
             responseHeaders = inboxResponse.headers
+        )
+    }
+
+    fun fetchMessageDetail(
+        username: String,
+        password: String,
+        detailUrl: String
+    ): RoundcubeMessageDetailFetchResult {
+        val loginResult = login(username, password)
+        if (!loginResult.success) {
+            return RoundcubeMessageDetailFetchResult(
+                success = false,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = loginResult.statusCode,
+                responseHtml = loginResult.responseHtml,
+                responseHeaders = loginResult.responseHeaders,
+                errorMessage = loginResult.errorMessage
+            )
+        }
+
+        val detailResponse = transport.get(detailUrl, refererUrl = inboxUrl)
+        if (detailResponse.code !in 200..299) {
+            return RoundcubeMessageDetailFetchResult(
+                success = false,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = detailResponse.code,
+                responseHtml = detailResponse.body,
+                responseHeaders = detailResponse.headers,
+                errorMessage = "Roundcube detail zpravy se nepodarilo nacist."
+            )
+        }
+
+        val detail = RoundcubeMessageDetailParser.parse(detailResponse.body)
+            ?: return RoundcubeMessageDetailFetchResult(
+                success = false,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = detailResponse.code,
+                responseHtml = detailResponse.body,
+                responseHeaders = detailResponse.headers,
+                errorMessage = "Roundcube detail zpravy ma neocekavanou strukturu."
+            )
+
+        return RoundcubeMessageDetailFetchResult(
+            success = true,
+            usernameUsed = loginResult.usernameUsed,
+            statusCode = detailResponse.code,
+            messageDetail = detail,
+            responseHtml = detailResponse.body,
+            responseHeaders = detailResponse.headers
         )
     }
 
