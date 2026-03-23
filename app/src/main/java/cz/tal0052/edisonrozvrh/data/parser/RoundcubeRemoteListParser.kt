@@ -1,6 +1,8 @@
 package cz.tal0052.edisonrozvrh.data.parser
 
+import com.google.gson.JsonElement
 import com.google.gson.JsonParser
+import com.google.gson.JsonPrimitive
 import org.jsoup.Jsoup
 
 object RoundcubeRemoteListParser {
@@ -14,9 +16,11 @@ object RoundcubeRemoteListParser {
         val exec = response.get("exec")?.asString?.trim().orEmpty()
         if (exec.isBlank()) return null
 
-        val countText = SET_ROWCOUNT_REGEX.find(exec)
+        val countMatch = SET_ROWCOUNT_REGEX.find(exec)
+        val countText = countMatch
             ?.groupValues
-            ?.getOrNull(2)
+            ?.getOrNull(4)
+            ?.ifBlank { countMatch.groupValues.getOrNull(2).orEmpty() }
             ?.let { Jsoup.parse(it).text().trim() }
             .orEmpty()
 
@@ -40,9 +44,9 @@ object RoundcubeRemoteListParser {
                 subject = Jsoup.parse(cols.get("subject")?.asString.orEmpty()).text().trim(),
                 date = Jsoup.parse(cols.get("date")?.asString.orEmpty()).text().trim(),
                 size = Jsoup.parse(cols.get("size")?.asString.orEmpty()).text().trim(),
-                unread = !(flags.get("seen")?.asBoolean ?: false),
-                flagged = flags.get("flagged")?.asBoolean ?: false,
-                hasAttachment = (flags.get("hasattachment")?.asBoolean ?: false) ||
+                unread = !parseRoundcubeFlag(flags.get("seen")),
+                flagged = parseRoundcubeFlag(flags.get("flagged")),
+                hasAttachment = parseRoundcubeFlag(flags.get("hasattachment")) ||
                     !flags.get("attachmentClass")?.asString.orEmpty().isBlank(),
                 detailUrl = "https://posta.vsb.cz/roundcube/?_task=mail&_mbox=$rowMailbox&_uid=$uid&_action=show"
             )
@@ -148,5 +152,26 @@ object RoundcubeRemoteListParser {
         return parts.filter { it.isNotBlank() }
     }
 
-    private val SET_ROWCOUNT_REGEX = Regex("""set_rowcount\((['"])(.*?)\1""")
+    private fun parseRoundcubeFlag(value: JsonElement?): Boolean {
+        if (value == null || value.isJsonNull) return false
+
+        val primitive = value as? JsonPrimitive ?: return false
+
+        return when {
+            primitive.isBoolean -> primitive.asBoolean
+            primitive.isNumber -> runCatching { primitive.asInt != 0 }.getOrDefault(false)
+            primitive.isString -> {
+                val normalized = primitive.asString.trim().lowercase()
+                normalized == "1" ||
+                    normalized == "true" ||
+                    normalized == "flagged" ||
+                    normalized == "seen" ||
+                    normalized == "read" ||
+                    normalized == "yes"
+            }
+            else -> false
+        }
+    }
+
+    private val SET_ROWCOUNT_REGEX = Regex("""set_rowcount\((['"])(.*?)\1(?:\s*,\s*(['"])(.*?)\3)?""")
 }
