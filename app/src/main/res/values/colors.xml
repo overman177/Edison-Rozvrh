@@ -76,6 +76,14 @@
     <color name="lesson_accent_sport">#FFFFEB3B</color>
     <!-- Accent fallback for unknown lesson types. -->
     <color name="lesson_accent_default">#FF9CB5B3</color>
+    <!-- Accent for custom orange activity cards/widgets. -->
+    <color name="lesson_accent_custom_orange">#FFFF9800</color>
+    <!-- Accent for custom pink activity cards/widgets. -->
+    <color name="lesson_accent_custom_pink">#FFE85D75</color>
+    <!-- Accent for custom indigo activity cards/widgets. -->
+    <color name="lesson_accent_custom_indigo">#FF5C6BC0</color>
+    <!-- Accent for custom mint activity cards/widgets. -->
+    <color name="lesson_accent_custom_mint">#FF26C6DA</color>
 
     <!-- Widget root gradient start color. -->
     <color name="widget_root_gradient_start">#CC0A1620</color>
@@ -144,6 +152,22 @@
     <color name="widget_card_default_fill">#FF13222A</color>
     <!-- Border color for default widget card. -->
     <color name="widget_card_default_stroke">#6B9CB5B3</color>
+    <!-- Fill color for custom orange widget card. -->
+    <color name="widget_card_custom_orange_fill">#FF2A1D12</color>
+    <!-- Border color for custom orange widget card. -->
+    <color name="widget_card_custom_orange_stroke">#6BFF9800</color>
+    <!-- Fill color for custom pink widget card. -->
+    <color name="widget_card_custom_pink_fill">#FF29151D</color>
+    <!-- Border color for custom pink widget card. -->
+    <color name="widget_card_custom_pink_stroke">#6BE85D75</color>
+    <!-- Fill color for custom indigo widget card. -->
+    <color name="widget_card_custom_indigo_fill">#FF171C2B</color>
+    <!-- Border color for custom indigo widget card. -->
+    <color name="widget_card_custom_indigo_stroke">#6B5C6BC0</color>
+    <!-- Fill color for custom mint widget card. -->
+    <color name="widget_card_custom_mint_fill">#FF12262A</color>
+    <!-- Border color for custom mint widget card. -->
+    <color name="widget_card_custom_mint_stroke">#6B26C6DA</color>
 
     <!-- Accent text color for snapshot widget's highlighted lesson. -->
     <color name="widget_snapshot_accent">#FF2ED7CC</color>

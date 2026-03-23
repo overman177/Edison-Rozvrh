@@ -259,8 +259,10 @@ fun WebCreditSyncView(
             WebView(context).apply {
                 val appContext = context.applicationContext
                 val cookieManager = CookieManager.getInstance()
+                val storedCredentials = loadEdisonCredentials(appContext)
                 var resolved = false
                 var authAttempted = false
+                var autoLoginAttempted = false
                 var pageVersion = 0
                 var authRequiredReported = false
                 lateinit var timeoutRunnable: Runnable
@@ -334,7 +336,22 @@ fun WebCreditSyncView(
                         if (resolved) return
                         if (url.isNullOrBlank()) return
 
-                        if (url.contains("www.sso.vsb.cz/login", ignoreCase = true) && !authRequiredReported) {
+                        if (url.contains("www.sso.vsb.cz/login", ignoreCase = true)) {
+                            val shouldAutoSubmit = storedCredentials != null && !autoLoginAttempted
+                            if (shouldAutoSubmit) {
+                                autoLoginAttempted = true
+                                scheduleTimeout(interactive = true)
+                                view?.evaluateJavascript(
+                                    buildSsoCredentialScript(
+                                        credentials = storedCredentials,
+                                        autoSubmit = true
+                                    ),
+                                    null
+                                )
+                                return
+                            }
+
+                            if (authRequiredReported) return
                             authRequiredReported = true
                             if (allowInteractiveAuth) {
                                 scheduleTimeout(interactive = true)

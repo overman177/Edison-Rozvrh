@@ -164,20 +164,22 @@ fun ScheduleScreen(
                     subtitle = "Work in progress, dod\u011bl\u00e1m a\u017e budou zkou\u0161ky dostupn\u00e9."
                 )
 
-                HomeTab.EMAIL -> EmailPreviewTab()
+                HomeTab.EMAIL -> EmailVerificationTab()
             }
 
-            Image(
-                painter = painterResource(id = R.drawable.logo_full),
-                contentDescription = "Logo Edison Rozvrh",
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .offset(y = (-47).dp)
-                    .width(118.dp)
-                    .zIndex(5f),
-                contentScale = ContentScale.FillWidth
-            )
+            if (selectedTab != HomeTab.EMAIL) {
+                Image(
+                    painter = painterResource(id = R.drawable.logo_full),
+                    contentDescription = "Logo Edison Rozvrh",
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .offset(y = (-47).dp)
+                        .width(118.dp)
+                        .zIndex(5f),
+                    contentScale = ContentScale.FillWidth
+                )
+            }
         }
     }
 }
@@ -799,7 +801,11 @@ private fun AddCustomActivityDialog(
         CustomColorChoice("cviko", "Modra", lessonTypePaletteForGrid("cviko").border),
         CustomColorChoice("prednaska", "Cervena", lessonTypePaletteForGrid("prednaska").border),
         CustomColorChoice("lab", "Zelena", lessonTypePaletteForGrid("lab").border),
-        CustomColorChoice("sport", "Zluta", lessonTypePaletteForGrid("sport").border)
+        CustomColorChoice("sport", "Zluta", lessonTypePaletteForGrid("sport").border),
+        CustomColorChoice("custom_orange", "Oranzova", lessonTypePaletteForGrid("custom_orange").border),
+        CustomColorChoice("custom_pink", "Ruzova", lessonTypePaletteForGrid("custom_pink").border),
+        CustomColorChoice("custom_indigo", "Indigova", lessonTypePaletteForGrid("custom_indigo").border),
+        CustomColorChoice("custom_mint", "Mentolova", lessonTypePaletteForGrid("custom_mint").border)
     )
     val weekOptions = listOf(
         "every" to "Kazdy tyden",
@@ -1047,7 +1053,7 @@ private fun AddCustomActivityDialog(
                         fontSize = 13.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    ColorSelectionPillRow(
+                    ColorSelectionGrid(
                         options = colorOptions,
                         selectedKey = selectedColorType,
                         onSelect = { value ->
@@ -1191,24 +1197,79 @@ private data class CustomColorChoice(
 )
 
 @Composable
-private fun ColorSelectionPillRow(
+private fun ColorSelectionGrid(
     options: List<CustomColorChoice>,
     selectedKey: String,
     onSelect: (String) -> Unit
 ) {
-    Row(
-        modifier = Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        options.forEach { option ->
-            SelectionPill(
-                label = option.label,
-                selected = option.key == selectedKey,
-                accent = option.accent,
-                leadingColor = option.accent,
-                onClick = { onSelect(option.key) }
-            )
+        options.chunked(3).forEach { rowOptions ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowOptions.forEach { option ->
+                    ColorSelectionTile(
+                        option = option,
+                        selected = option.key == selectedKey,
+                        onClick = { onSelect(option.key) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                repeat(3 - rowOptions.size) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun ColorSelectionTile(
+    option: CustomColorChoice,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .background(
+                color = if (selected) option.accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.58f),
+                shape = RoundedCornerShape(18.dp)
+            )
+            .border(
+                width = if (selected) 1.5.dp else 1.dp,
+                color = if (selected) option.accent.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+                shape = RoundedCornerShape(18.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(26.dp)
+                .background(option.accent, CircleShape)
+                .border(1.dp, option.accent.copy(alpha = 0.36f), CircleShape)
+        )
+        Text(
+            text = option.label,
+            color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            lineHeight = 14.sp
+        )
+        Text(
+            text = if (selected) "Vybrano" else "Vybrat",
+            color = if (selected) option.accent else MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 11.sp
+        )
     }
 }
 
@@ -1369,7 +1430,7 @@ private fun predefinedCustomTimeSlots(): List<Pair<Int, Int>> {
 
 private fun normalizeCustomColorType(rawType: String): String {
     return when (rawType.trim().lowercase(Locale.ROOT)) {
-        "cviko", "prednaska", "lab", "sport" -> rawType.trim().lowercase(Locale.ROOT)
+        "cviko", "prednaska", "lab", "sport", "custom_orange", "custom_pink", "custom_indigo", "custom_mint" -> rawType.trim().lowercase(Locale.ROOT)
         else -> "other"
     }
 }
@@ -1386,6 +1447,10 @@ private fun lessonTypePaletteForGrid(type: String): LessonTypePalette {
         "prednaska" -> colorResource(R.color.lesson_accent_prednaska)
         "lab" -> colorResource(R.color.lesson_accent_lab)
         "sport" -> colorResource(R.color.lesson_accent_sport)
+        "custom_orange" -> colorResource(R.color.lesson_accent_custom_orange)
+        "custom_pink" -> colorResource(R.color.lesson_accent_custom_pink)
+        "custom_indigo" -> colorResource(R.color.lesson_accent_custom_indigo)
+        "custom_mint" -> colorResource(R.color.lesson_accent_custom_mint)
         else -> colorResource(R.color.lesson_accent_default)
     }
 
@@ -2251,161 +2316,6 @@ private fun ResultValueChip(
 
 
 @Composable
-private fun EmailPreviewTab() {
-    val folders = listOf("Inbox", "Drafts", "Sent")
-    val previewMessages = listOf(
-        Triple("VSB Portal", "Potvrzeni registrace predmetu a aktualizace harmonogramu.", "Dnes"),
-        Triple("Studijni oddeleni", "Pripominka k zapisu a kontrole osobnich udaju.", "Vcera"),
-        Triple("Roundcube", "Tady bude vlastni UI posty. Funkcnost zatim neni zapojena.", "Preview")
-    )
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "Email",
-                    fontSize = 42.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Roundcube Inbox",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            Button(
-                onClick = {},
-                modifier = Modifier.padding(top = 8.dp)
-            ) {
-                Text("Obnovit")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            folders.forEachIndexed { index, folder ->
-                Box(
-                    modifier = Modifier
-                        .background(
-                            color = if (index == 0) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
-                            shape = RoundedCornerShape(14.dp)
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = if (index == 0) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                            else MaterialTheme.colorScheme.outline.copy(alpha = 0.24f),
-                            shape = RoundedCornerShape(14.dp)
-                        )
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        text = folder,
-                        color = if (index == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Medium
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.56f)
-            ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Preview only",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Tohle je jen navrat UI obrazovky pro Email. Nacitaní posty, login i otevirani zprav jsou ted vypnute.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        previewMessages.forEachIndexed { index, item ->
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = if (index == 0) 0.64f else 0.56f)
-                ),
-                border = BorderStroke(
-                    1.dp,
-                    if (index == 0) MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
-                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Text(
-                            text = item.first,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = if (index == 0) FontWeight.Bold else FontWeight.SemiBold,
-                            fontSize = 17.sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = item.third,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.sp,
-                            textAlign = TextAlign.End,
-                            modifier = Modifier.padding(start = 12.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = item.second,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-        }
-
-        Spacer(modifier = Modifier.height(72.dp))
-    }
-}
-@Composable
 private fun PlaceholderTab(
     title: String,
     subtitle: String
@@ -2629,6 +2539,7 @@ private fun toWeekParity(rawPattern: String): WeekParity {
         else -> WeekParity.EVERY
     }
 }
+
 
 
 

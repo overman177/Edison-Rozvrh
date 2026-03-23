@@ -83,7 +83,10 @@ import cz.tal0052.edisonrozvrh.data.parser.CurrentResultsData
 import cz.tal0052.edisonrozvrh.data.parser.StudyInfoData
 import cz.tal0052.edisonrozvrh.data.parser.WebCreditData
 import cz.tal0052.edisonrozvrh.data.repository.EdisonRepository
+import cz.tal0052.edisonrozvrh.data.auth.loadEdisonCredentials
+import cz.tal0052.edisonrozvrh.data.auth.saveEdisonCredentials
 import cz.tal0052.edisonrozvrh.map.resolveVsbRoomMapInfo
+import cz.tal0052.edisonrozvrh.ui.auth.CredentialLoginScreen
 import cz.tal0052.edisonrozvrh.ui.auth.EdisonLoginScreen
 import cz.tal0052.edisonrozvrh.ui.auth.WebCreditSyncView
 import cz.tal0052.edisonrozvrh.ui.design.LessonTypePalette
@@ -175,6 +178,10 @@ private fun lessonTypePalette(type: String): LessonTypePalette {
         "prednaska" -> colorResource(R.color.lesson_accent_prednaska)
         "lab" -> colorResource(R.color.lesson_accent_lab)
         "sport" -> colorResource(R.color.lesson_accent_sport)
+        "custom_orange" -> colorResource(R.color.lesson_accent_custom_orange)
+        "custom_pink" -> colorResource(R.color.lesson_accent_custom_pink)
+        "custom_indigo" -> colorResource(R.color.lesson_accent_custom_indigo)
+        "custom_mint" -> colorResource(R.color.lesson_accent_custom_mint)
         else -> colorResource(R.color.lesson_accent_default)
     }
 
@@ -241,6 +248,10 @@ class MainActivity : ComponentActivity() {
                     val forceEdisonLoginState = remember { mutableStateOf(false) }
                     val webCreditSyncAttemptedState = remember { mutableStateOf(false) }
                     val webCreditAuthVisibleState = remember { mutableStateOf(false) }
+                    val credentialsVersionState = remember { mutableIntStateOf(0) }
+                    val hasStoredCredentials = remember(credentialsVersionState.intValue) {
+                        loadEdisonCredentials(this) != null
+                    }
 
                     val cachedLessons = loadSchedule(this)
                     if (cachedLessons != null) {
@@ -277,7 +288,15 @@ class MainActivity : ComponentActivity() {
                             lifecycleOwner.lifecycle.removeObserver(observer)
                         }
                     }
-                    if (lessonsState.value == null || forceEdisonLoginState.value) {
+                    if (!hasStoredCredentials) {
+                        CredentialLoginScreen { username, password ->
+                            saveEdisonCredentials(this, username, password)
+                            credentialsVersionState.intValue += 1
+                            forceEdisonLoginState.value = true
+                            webCreditAuthVisibleState.value = false
+                            webCreditSyncAttemptedState.value = false
+                        }
+                    } else if (lessonsState.value == null || forceEdisonLoginState.value) {
                         EdisonLoginScreen { lessons, currentResults, studyInfo ->
                             lessonsState.value = loadSchedule(this) ?: lessons
                             if (currentResults != null) {

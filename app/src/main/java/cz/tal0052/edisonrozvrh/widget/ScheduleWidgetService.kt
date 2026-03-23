@@ -104,8 +104,8 @@ private class ScheduleWidgetFactory(
             views.setTextViewText(R.id.itemEndTime, endLabel)
 
             val paritySuffix = when (normalizeWeekPatternCode(lesson.weekPattern)) {
-                "odd" -> " • L"
-                "even" -> " • S"
+                "odd" -> " ï¿½ L"
+                "even" -> " ï¿½ S"
                 else -> ""
             }
             views.setTextViewText(R.id.itemSubject, lesson.subject + paritySuffix)
@@ -117,6 +117,10 @@ private class ScheduleWidgetFactory(
                 "prednaska" -> R.drawable.widget_card_bg_prednaska
                 "lab" -> R.drawable.widget_card_bg_lab
                 "sport" -> R.drawable.widget_card_bg_sport
+                "custom_orange" -> R.drawable.widget_card_bg_custom_orange
+                "custom_pink" -> R.drawable.widget_card_bg_custom_pink
+                "custom_indigo" -> R.drawable.widget_card_bg_custom_indigo
+                "custom_mint" -> R.drawable.widget_card_bg_custom_mint
                 else -> R.drawable.widget_card_bg_default
             }
             views.setInt(R.id.widgetBubble, "setBackgroundResource", bubbleBg)
