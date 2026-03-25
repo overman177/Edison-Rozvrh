@@ -8,6 +8,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -38,7 +40,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,7 +47,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import cz.tal0052.edisonrozvrh.R
 import cz.tal0052.edisonrozvrh.data.auth.loadEdisonCredentials
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeInboxMessage
 import cz.tal0052.edisonrozvrh.data.repository.RoundcubeCookieProvider
@@ -72,14 +76,17 @@ fun EmailVerificationTab() {
     val credentials = remember { loadEdisonCredentials(context) }
     val transport = remember { RoundcubeOkHttpTransport() }
     val client = remember(transport) { RoundcubeLoginClient(transport = transport) }
+    val listState = rememberLazyListState()
     var inboxResult by remember { mutableStateOf<RoundcubeInboxFetchResult?>(null) }
     var isInboxLoading by remember { mutableStateOf(false) }
     var openedMessage by remember { mutableStateOf<RoundcubeInboxMessage?>(null) }
     var detailResult by remember { mutableStateOf<RoundcubeMessageDetailFetchResult?>(null) }
     var isDetailLoading by remember { mutableStateOf(false) }
     var remoteContentRequested by remember { mutableStateOf(false) }
+    var inboxMessages by remember { mutableStateOf<List<RoundcubeInboxMessage>>(emptyList()) }
     var visibleMessages by remember { mutableStateOf<List<RoundcubeInboxMessage>>(emptyList()) }
     var currentPage by remember { mutableStateOf(1) }
+    var flaggedFirst by remember { mutableStateOf(false) }
 
     fun refreshInbox(targetPage: Int = currentPage) {
         if (isInboxLoading) return
@@ -112,8 +119,14 @@ fun EmailVerificationTab() {
                 )
             }
 
+            val freshMessages = freshResult.inboxPage?.messages.orEmpty()
+
             inboxResult = freshResult
-            visibleMessages = freshResult.inboxPage?.messages.orEmpty()
+            inboxMessages = freshMessages
+            visibleMessages = reorderInboxMessages(
+                messages = freshMessages,
+                flaggedFirst = flaggedFirst
+            )
             isInboxLoading = false
         }
     }
@@ -139,9 +152,14 @@ fun EmailVerificationTab() {
         detailResult = null
         isDetailLoading = true
         remoteContentRequested = false
-        visibleMessages = visibleMessages.map { current ->
+        val updatedMessages = inboxMessages.map { current ->
             if (current.uid == message.uid) current.copy(unread = false) else current
         }
+        inboxMessages = updatedMessages
+        visibleMessages = reorderInboxMessages(
+            messages = updatedMessages,
+            flaggedFirst = flaggedFirst
+        )
 
         scope.launch {
             val fetchedDetail = withContext(Dispatchers.IO) {
@@ -170,9 +188,14 @@ fun EmailVerificationTab() {
         val storedCredentials = credentials ?: return
         val newFlaggedState = !message.flagged
 
-        visibleMessages = visibleMessages.map { current ->
+        val updatedMessages = inboxMessages.map { current ->
             if (current.uid == message.uid) current.copy(flagged = newFlaggedState) else current
         }
+        inboxMessages = updatedMessages
+        visibleMessages = reorderInboxMessages(
+            messages = updatedMessages,
+            flaggedFirst = flaggedFirst
+        )
 
         scope.launch {
             val actionResult = withContext(Dispatchers.IO) {
@@ -185,9 +208,14 @@ fun EmailVerificationTab() {
             }
 
             if (!actionResult.success) {
-                visibleMessages = visibleMessages.map { current ->
+                val revertedMessages = inboxMessages.map { current ->
                     if (current.uid == message.uid) current.copy(flagged = message.flagged) else current
                 }
+                inboxMessages = revertedMessages
+                visibleMessages = reorderInboxMessages(
+                    messages = revertedMessages,
+                    flaggedFirst = flaggedFirst
+                )
             }
         }
     }
@@ -231,13 +259,7 @@ fun EmailVerificationTab() {
             loadedCount = messages.size
         )
     }
-    val inboxLabel = when {
-        pageInfo != null -> "INBOX · ${pageInfo.total}"
-        inboxResult?.inboxPage?.countText?.isNotBlank() == true &&
-            !inboxResult?.inboxPage?.countText.equals("INBOX", ignoreCase = true) ->
-            "INBOX · ${inboxResult?.inboxPage?.countText}"
-        else -> "INBOX"
-    }
+    val inboxLabel = if (pageInfo != null) "INBOX ${pageInfo.total}" else "INBOX"
 
     Column(
         modifier = Modifier
@@ -245,6 +267,17 @@ fun EmailVerificationTab() {
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
+        Image(
+            painter = painterResource(id = R.drawable.logo_full),
+            contentDescription = "Logo Edison Rozvrh",
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .width(118.dp),
+            contentScale = ContentScale.FillWidth
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -268,24 +301,70 @@ fun EmailVerificationTab() {
                 )
             }
 
-            Button(
-                onClick = ::refreshInbox,
-                enabled = !isInboxLoading,
-                modifier = Modifier.padding(top = 6.dp)
+            Column(
+                modifier = Modifier.padding(top = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.End
             ) {
-                if (isInboxLoading) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.height(16.dp)
-                        )
-                        Text("Obnovuji")
+                Button(
+                    onClick = ::refreshInbox,
+                    enabled = !isInboxLoading
+                ) {
+                    if (isInboxLoading) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.height(16.dp)
+                            )
+                            Text("Obnovuji")
+                        }
+                    } else {
+                        Text("Obnovit")
                     }
-                } else {
-                    Text("Obnovit")
+                }
+
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (flaggedFirst) {
+                            Color(0xFFFF3B30).copy(alpha = 0.18f)
+                        } else {
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)
+                        }
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (flaggedFirst) {
+                            Color(0xFFFF3B30).copy(alpha = 0.44f)
+                        } else {
+                            MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                        }
+                    ),
+                    modifier = Modifier.clickable {
+                        flaggedFirst = !flaggedFirst
+                        visibleMessages = reorderInboxMessages(
+                            messages = inboxMessages,
+                            flaggedFirst = flaggedFirst
+                        )
+                        scope.launch {
+                            listState.scrollToItem(0)
+                        }
+                    }
+                ) {
+                    Text(
+                        text = if (flaggedFirst) "Bez trideni" else "Dulezite nahoru",
+                        color = if (flaggedFirst) {
+                            Color(0xFFFF6B61)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
                 }
             }
         }
@@ -322,6 +401,7 @@ fun EmailVerificationTab() {
 
                 else -> {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -894,6 +974,16 @@ private fun containsPotentialRemoteContent(responseHtml: String, bodyHtml: Strin
     return remoteImageRegex.containsMatchIn(bodyHtml) ||
         remoteStyleRegex.containsMatchIn(bodyHtml) ||
         anyImageRegex.containsMatchIn(bodyHtml)
+}
+
+private fun reorderInboxMessages(
+    messages: List<RoundcubeInboxMessage>,
+    flaggedFirst: Boolean
+): List<RoundcubeInboxMessage> {
+    if (!flaggedFirst) return messages
+
+    val (flaggedMessages, regularMessages) = messages.partition { it.flagged }
+    return flaggedMessages + regularMessages
 }
 
 private data class InboxPageInfo(
