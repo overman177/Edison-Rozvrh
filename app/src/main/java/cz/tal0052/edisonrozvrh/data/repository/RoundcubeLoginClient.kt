@@ -2,6 +2,7 @@ package cz.tal0052.edisonrozvrh.data.repository
 
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeInboxPage
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeInboxParser
+import cz.tal0052.edisonrozvrh.data.parser.RoundcubeInboxMessage
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeLoginParser
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeMailboxShellParser
 import cz.tal0052.edisonrozvrh.data.parser.RoundcubeMessageDetail
@@ -62,6 +63,8 @@ class RoundcubeLoginClient(
     private val loginUrl: String = "https://posta.vsb.cz/roundcube/?_task=login",
     private val inboxUrl: String = "https://posta.vsb.cz/roundcube/?_task=mail&_mbox=INBOX"
 ) {
+    private val countRangeRegex = Regex("""(\d+)\s+to\s+(\d+)\s+of\s+(\d+)""", RegexOption.IGNORE_CASE)
+
     fun login(username: String, password: String): RoundcubeLoginResult {
         val attempts = buildUsernameAttempts(username)
         var lastFailure: RoundcubeLoginResult? = null
@@ -143,6 +146,98 @@ class RoundcubeLoginClient(
             usernameUsed = loginResult.usernameUsed,
             statusCode = inboxResponse.code,
             inboxPage = inboxPage,
+            responseHtml = inboxResponse.body,
+            responseHeaders = inboxResponse.headers
+        )
+    }
+
+    fun loginAndFetchAllInboxPages(
+        username: String,
+        password: String
+    ): RoundcubeInboxFetchResult {
+        val loginResult = login(username, password)
+        if (!loginResult.success) {
+            return RoundcubeInboxFetchResult(
+                success = false,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = loginResult.statusCode,
+                responseHtml = loginResult.responseHtml,
+                responseHeaders = loginResult.responseHeaders,
+                errorMessage = loginResult.errorMessage
+            )
+        }
+
+        val inboxResponse = transport.get(inboxUrl, refererUrl = loginUrl)
+        if (inboxResponse.code !in 200..299) {
+            return RoundcubeInboxFetchResult(
+                success = false,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = inboxResponse.code,
+                responseHtml = inboxResponse.body,
+                responseHeaders = inboxResponse.headers,
+                errorMessage = "Roundcube inbox request selhal."
+            )
+        }
+
+        val inboxPage = RoundcubeInboxParser.parse(inboxResponse.body)
+            ?: return RoundcubeInboxFetchResult(
+                success = false,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = inboxResponse.code,
+                responseHtml = inboxResponse.body,
+                responseHeaders = inboxResponse.headers,
+                errorMessage = "Roundcube inbox ma neocekavanou strukturu."
+            )
+
+        val remoteTransport = transport as? RoundcubeRemoteListTransport
+        val shellPage = RoundcubeMailboxShellParser.parse(inboxResponse.body)
+
+        if (remoteTransport == null || shellPage == null) {
+            return RoundcubeInboxFetchResult(
+                success = true,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = inboxResponse.code,
+                inboxPage = inboxPage,
+                responseHtml = inboxResponse.body,
+                responseHeaders = inboxResponse.headers
+            )
+        }
+
+        val firstPage = fetchRemoteInboxPage(shellPage, 1)
+            ?: return RoundcubeInboxFetchResult(
+                success = true,
+                usernameUsed = loginResult.usernameUsed,
+                statusCode = inboxResponse.code,
+                inboxPage = inboxPage,
+                responseHtml = inboxResponse.body,
+                responseHeaders = inboxResponse.headers
+            )
+
+        val totalMessages = parseTotalMessages(firstPage.countText)
+        val pageSize = firstPage.messages.size.takeIf { it > 0 } ?: 50
+        val totalPages = totalMessages?.let { ((it - 1) / pageSize) + 1 } ?: 1
+        val allMessages = LinkedHashMap<String, RoundcubeInboxMessage>()
+
+        firstPage.messages.forEach { message ->
+            allMessages[message.uid] = message
+        }
+
+        for (pageNumber in 2..totalPages) {
+            val pageResult = fetchRemoteInboxPage(shellPage, pageNumber) ?: continue
+            pageResult.messages.forEach { message ->
+                allMessages[message.uid] = message
+            }
+        }
+
+        val mergedPage = firstPage.copy(
+            messages = allMessages.values.toList()
+        )
+
+        return RoundcubeInboxFetchResult(
+            success = true,
+            usernameUsed = loginResult.usernameUsed,
+            statusCode = inboxResponse.code,
+            inboxPage = mergedPage,
             responseHtml = inboxResponse.body,
             responseHeaders = inboxResponse.headers
         )
@@ -366,5 +461,12 @@ class RoundcubeLoginClient(
             .setQueryParameter("_safe", "1")
             .build()
             .toString()
+    }
+
+    private fun parseTotalMessages(countText: String): Int? {
+        return countRangeRegex.find(countText)
+            ?.groupValues
+            ?.getOrNull(3)
+            ?.toIntOrNull()
     }
 }

@@ -85,8 +85,32 @@ fun EmailVerificationTab() {
     var remoteContentRequested by remember { mutableStateOf(false) }
     var inboxMessages by remember { mutableStateOf<List<RoundcubeInboxMessage>>(emptyList()) }
     var visibleMessages by remember { mutableStateOf<List<RoundcubeInboxMessage>>(emptyList()) }
+    var globallySortedMessages by remember { mutableStateOf<List<RoundcubeInboxMessage>>(emptyList()) }
+    var inboxPageSize by remember { mutableStateOf(50) }
     var currentPage by remember { mutableStateOf(1) }
     var flaggedFirst by remember { mutableStateOf(false) }
+
+    fun showMessagesForCurrentMode(
+        messages: List<RoundcubeInboxMessage>,
+        targetPage: Int = currentPage
+    ) {
+        if (!flaggedFirst) {
+            globallySortedMessages = emptyList()
+            visibleMessages = messages
+            return
+        }
+
+        val sortedMessages = reorderInboxMessages(messages, flaggedFirst = true)
+        globallySortedMessages = sortedMessages
+        val maxPage = ((sortedMessages.size - 1) / inboxPageSize) + 1
+        val resolvedPage = targetPage.coerceIn(1, maxPage.coerceAtLeast(1))
+        currentPage = resolvedPage
+        visibleMessages = sliceInboxPage(
+            messages = sortedMessages,
+            currentPage = resolvedPage,
+            pageSize = inboxPageSize
+        )
+    }
 
     fun refreshInbox(targetPage: Int = currentPage) {
         if (isInboxLoading) return
@@ -112,20 +136,30 @@ fun EmailVerificationTab() {
 
         scope.launch {
             val freshResult = withContext(Dispatchers.IO) {
-                client.loginAndFetchInbox(
-                    username = storedCredentials.username,
-                    password = storedCredentials.password,
-                    page = currentPage
-                )
+                if (flaggedFirst) {
+                    client.loginAndFetchAllInboxPages(
+                        username = storedCredentials.username,
+                        password = storedCredentials.password
+                    )
+                } else {
+                    client.loginAndFetchInbox(
+                        username = storedCredentials.username,
+                        password = storedCredentials.password,
+                        page = currentPage
+                    )
+                }
             }
 
             val freshMessages = freshResult.inboxPage?.messages.orEmpty()
+            if (freshMessages.isNotEmpty() && !flaggedFirst) {
+                inboxPageSize = freshMessages.size
+            }
 
             inboxResult = freshResult
             inboxMessages = freshMessages
-            visibleMessages = reorderInboxMessages(
+            showMessagesForCurrentMode(
                 messages = freshMessages,
-                flaggedFirst = flaggedFirst
+                targetPage = targetPage
             )
             isInboxLoading = false
         }
@@ -156,10 +190,7 @@ fun EmailVerificationTab() {
             if (current.uid == message.uid) current.copy(unread = false) else current
         }
         inboxMessages = updatedMessages
-        visibleMessages = reorderInboxMessages(
-            messages = updatedMessages,
-            flaggedFirst = flaggedFirst
-        )
+        showMessagesForCurrentMode(updatedMessages)
 
         scope.launch {
             val fetchedDetail = withContext(Dispatchers.IO) {
@@ -192,10 +223,7 @@ fun EmailVerificationTab() {
             if (current.uid == message.uid) current.copy(flagged = newFlaggedState) else current
         }
         inboxMessages = updatedMessages
-        visibleMessages = reorderInboxMessages(
-            messages = updatedMessages,
-            flaggedFirst = flaggedFirst
-        )
+        showMessagesForCurrentMode(updatedMessages)
 
         scope.launch {
             val actionResult = withContext(Dispatchers.IO) {
@@ -212,10 +240,7 @@ fun EmailVerificationTab() {
                     if (current.uid == message.uid) current.copy(flagged = message.flagged) else current
                 }
                 inboxMessages = revertedMessages
-                visibleMessages = reorderInboxMessages(
-                    messages = revertedMessages,
-                    flaggedFirst = flaggedFirst
-                )
+                showMessagesForCurrentMode(revertedMessages)
             }
         }
     }
@@ -252,12 +277,20 @@ fun EmailVerificationTab() {
     }
 
     val messages = visibleMessages
-    val pageInfo = remember(inboxResult?.inboxPage?.countText, currentPage, messages.size) {
-        parseInboxPageInfo(
-            countText = inboxResult?.inboxPage?.countText.orEmpty(),
+    val pageInfo = if (flaggedFirst && inboxMessages.isNotEmpty()) {
+        buildInboxPageInfo(
+            total = inboxMessages.size,
             currentPage = currentPage,
-            loadedCount = messages.size
+            pageSize = inboxPageSize
         )
+    } else {
+        remember(inboxResult?.inboxPage?.countText, currentPage, messages.size) {
+            parseInboxPageInfo(
+                countText = inboxResult?.inboxPage?.countText.orEmpty(),
+                currentPage = currentPage,
+                loadedCount = messages.size
+            )
+        }
     }
     val inboxLabel = if (pageInfo != null) "INBOX ${pageInfo.total}" else "INBOX"
 
@@ -345,17 +378,15 @@ fun EmailVerificationTab() {
                     ),
                     modifier = Modifier.clickable {
                         flaggedFirst = !flaggedFirst
-                        visibleMessages = reorderInboxMessages(
-                            messages = inboxMessages,
-                            flaggedFirst = flaggedFirst
-                        )
+                        currentPage = 1
                         scope.launch {
                             listState.scrollToItem(0)
                         }
+                        refreshInbox(1)
                     }
                 ) {
                     Text(
-                        text = if (flaggedFirst) "Bez trideni" else "Dulezite nahoru",
+                        text = "Sort: ${if (flaggedFirst) "Dulezite nahoru" else "Bez trideni"}",
                         color = if (flaggedFirst) {
                             Color(0xFFFF6B61)
                         } else {
@@ -431,12 +462,32 @@ fun EmailVerificationTab() {
                 isLoading = isInboxLoading,
                 onPreviousPage = {
                     if (pageInfo.hasPreviousPage) {
-                        refreshInbox(pageInfo.previousPage)
+                        if (flaggedFirst && globallySortedMessages.isNotEmpty()) {
+                            currentPage = pageInfo.previousPage
+                            visibleMessages = sliceInboxPage(
+                                messages = globallySortedMessages,
+                                currentPage = pageInfo.previousPage,
+                                pageSize = inboxPageSize
+                            )
+                            scope.launch { listState.scrollToItem(0) }
+                        } else {
+                            refreshInbox(pageInfo.previousPage)
+                        }
                     }
                 },
                 onNextPage = {
                     if (pageInfo.hasNextPage) {
-                        refreshInbox(pageInfo.nextPage)
+                        if (flaggedFirst && globallySortedMessages.isNotEmpty()) {
+                            currentPage = pageInfo.nextPage
+                            visibleMessages = sliceInboxPage(
+                                messages = globallySortedMessages,
+                                currentPage = pageInfo.nextPage,
+                                pageSize = inboxPageSize
+                            )
+                            scope.launch { listState.scrollToItem(0) }
+                        } else {
+                            refreshInbox(pageInfo.nextPage)
+                        }
                     }
                 }
             )
@@ -984,6 +1035,43 @@ private fun reorderInboxMessages(
 
     val (flaggedMessages, regularMessages) = messages.partition { it.flagged }
     return flaggedMessages + regularMessages
+}
+
+private fun sliceInboxPage(
+    messages: List<RoundcubeInboxMessage>,
+    currentPage: Int,
+    pageSize: Int
+): List<RoundcubeInboxMessage> {
+    if (messages.isEmpty()) return emptyList()
+
+    val safePageSize = pageSize.coerceAtLeast(1)
+    val startIndex = ((currentPage - 1).coerceAtLeast(0)) * safePageSize
+    if (startIndex >= messages.size) return emptyList()
+
+    val endIndex = (startIndex + safePageSize).coerceAtMost(messages.size)
+    return messages.subList(startIndex, endIndex)
+}
+
+private fun buildInboxPageInfo(
+    total: Int,
+    currentPage: Int,
+    pageSize: Int
+): InboxPageInfo? {
+    if (total <= 0) return null
+
+    val safePageSize = pageSize.coerceAtLeast(1)
+    val maxPage = ((total - 1) / safePageSize) + 1
+    val resolvedPage = currentPage.coerceIn(1, maxPage)
+    val start = ((resolvedPage - 1) * safePageSize) + 1
+    val end = (start + safePageSize - 1).coerceAtMost(total)
+
+    return InboxPageInfo(
+        start = start,
+        end = end,
+        total = total,
+        currentPage = resolvedPage,
+        pageSize = safePageSize
+    )
 }
 
 private data class InboxPageInfo(
