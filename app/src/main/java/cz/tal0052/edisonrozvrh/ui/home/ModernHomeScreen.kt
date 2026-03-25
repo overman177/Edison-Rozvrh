@@ -76,6 +76,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -147,9 +148,11 @@ fun ScheduleScreen(
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(HomeTab.SCHEDULE) }
     var transitionDirection by rememberSaveable { mutableStateOf(0) }
+    var dragOffsetPx by remember { mutableStateOf(0f) }
 
     fun selectTab(targetTab: HomeTab) {
         if (targetTab == selectedTab) return
+        dragOffsetPx = 0f
         transitionDirection = HomeTabs.indexOf(targetTab).compareTo(HomeTabs.indexOf(selectedTab))
         selectedTab = targetTab
     }
@@ -179,7 +182,9 @@ fun ScheduleScreen(
                             slideOutHorizontally { fullWidth -> fullWidth / 4 } + fadeOut()
                     }
                 },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { translationX = dragOffsetPx },
                 label = "home-tab-transition"
             ) { tab ->
                 when (tab) {
@@ -221,7 +226,8 @@ fun ScheduleScreen(
 
             TabEdgeSwipeOverlay(
                 selectedTab = selectedTab,
-                onSelect = ::selectTab
+                onSelect = ::selectTab,
+                onDragOffsetChanged = { dragOffsetPx = it }
             )
         }
     }
@@ -354,12 +360,14 @@ internal fun HeaderPill(
 @Composable
 private fun TabEdgeSwipeOverlay(
     selectedTab: HomeTab,
-    onSelect: (HomeTab) -> Unit
+    onSelect: (HomeTab) -> Unit,
+    onDragOffsetChanged: (Float) -> Unit
 ) {
     val selectedIndex = HomeTabs.indexOf(selectedTab)
     val previousTab = HomeTabs.getOrNull(selectedIndex - 1)
     val nextTab = HomeTabs.getOrNull(selectedIndex + 1)
     val swipeThreshold = 72f
+    val maxDragOffset = 220f
     val edgeSwipeWidth = if (selectedTab == HomeTab.SCHEDULE) 56.dp else 84.dp
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -377,11 +385,17 @@ private fun TabEdgeSwipeOverlay(
                                 if (totalDrag > swipeThreshold) {
                                     onSelect(previousTab)
                                 }
+                                onDragOffsetChanged(0f)
+                                totalDrag = 0f
+                            },
+                            onDragCancel = {
+                                onDragOffsetChanged(0f)
                                 totalDrag = 0f
                             },
                             onHorizontalDrag = { change, dragAmount ->
                                 change.consume()
-                                totalDrag += dragAmount
+                                totalDrag = (totalDrag + dragAmount).coerceIn(0f, maxDragOffset)
+                                onDragOffsetChanged(totalDrag)
                             }
                         )
                     }
@@ -402,11 +416,17 @@ private fun TabEdgeSwipeOverlay(
                                 if (totalDrag < -swipeThreshold) {
                                     onSelect(nextTab)
                                 }
+                                onDragOffsetChanged(0f)
+                                totalDrag = 0f
+                            },
+                            onDragCancel = {
+                                onDragOffsetChanged(0f)
                                 totalDrag = 0f
                             },
                             onHorizontalDrag = { change, dragAmount ->
                                 change.consume()
-                                totalDrag += dragAmount
+                                totalDrag = (totalDrag + dragAmount).coerceIn(-maxDragOffset, 0f)
+                                onDragOffsetChanged(totalDrag)
                             }
                         )
                     }
