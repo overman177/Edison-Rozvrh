@@ -22,13 +22,16 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -68,6 +71,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -102,6 +106,14 @@ private enum class HomeTab(val label: String) {
     SCHEDULE("Rozvrh"),
     EMAIL("Email")
 }
+
+private val HomeTabs = listOf(
+    HomeTab.UNIVERSITY,
+    HomeTab.RESULTS,
+    HomeTab.EXAMS,
+    HomeTab.SCHEDULE,
+    HomeTab.EMAIL
+)
 
 private enum class WeekParity(val label: String) {
     ODD("Lich\u00fd"),
@@ -167,19 +179,22 @@ fun ScheduleScreen(
                 HomeTab.EMAIL -> EmailVerificationTab()
             }
 
-            if (selectedTab != HomeTab.EMAIL) {
-                Image(
-                    painter = painterResource(id = R.drawable.logo_full),
-                    contentDescription = "Logo Edison Rozvrh",
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .statusBarsPadding()
-                        .offset(y = (-47).dp)
-                        .width(118.dp)
-                        .zIndex(5f),
-                    contentScale = ContentScale.FillWidth
-                )
-            }
+            Image(
+                painter = painterResource(id = R.drawable.logo_full),
+                contentDescription = "Logo Edison Rozvrh",
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .offset(y = (-32).dp)
+                    .width(122.dp)
+                    .zIndex(6f),
+                contentScale = ContentScale.FillWidth
+            )
+
+            TabEdgeSwipeOverlay(
+                selectedTab = selectedTab,
+                onSelect = { selectedTab = it }
+            )
         }
     }
 }
@@ -189,8 +204,6 @@ private fun EdisonBottomNavigation(
     selectedTab: HomeTab,
     onSelect: (HomeTab) -> Unit
 ) {
-    val tabs = listOf(HomeTab.UNIVERSITY, HomeTab.RESULTS, HomeTab.EXAMS, HomeTab.SCHEDULE, HomeTab.EMAIL)
-
     Surface(
         color = Color.Transparent,
         modifier = Modifier
@@ -212,7 +225,7 @@ private fun EdisonBottomNavigation(
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            tabs.forEach { tab ->
+            HomeTabs.forEach { tab ->
                 val isSelected = tab == selectedTab
                 Box(
                     modifier = Modifier
@@ -233,6 +246,167 @@ private fun EdisonBottomNavigation(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun AppTabHeader(
+    title: String,
+    subtitle: String = "",
+    trailingContent: @Composable ColumnScope.() -> Unit = {}
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Spacer(modifier = Modifier.height(48.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = subtitle,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 20.sp
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.padding(top = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.End,
+                content = trailingContent
+            )
+        }
+    }
+}
+
+@Composable
+internal fun HeaderPill(
+    text: String,
+    accentColor: Color = MaterialTheme.colorScheme.outline,
+    filled: Boolean = false
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = if (filled) {
+            accentColor.copy(alpha = 0.16f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        },
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.25f))
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            color = if (filled) accentColor else MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp
+        )
+    }
+}
+
+@Composable
+private fun TabEdgeSwipeOverlay(
+    selectedTab: HomeTab,
+    onSelect: (HomeTab) -> Unit
+) {
+    val selectedIndex = HomeTabs.indexOf(selectedTab)
+    val previousTab = HomeTabs.getOrNull(selectedIndex - 1)
+    val nextTab = HomeTabs.getOrNull(selectedIndex + 1)
+    val swipeThreshold = 72f
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (selectedTab != HomeTab.SCHEDULE) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .zIndex(7f)
+                    .pointerInput(selectedTab) {
+                        var totalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                when {
+                                    totalDrag > swipeThreshold && previousTab != null -> onSelect(previousTab)
+                                    totalDrag < -swipeThreshold && nextTab != null -> onSelect(nextTab)
+                                }
+                                totalDrag = 0f
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                totalDrag += dragAmount
+                            }
+                        )
+                    }
+            )
+            return@Box
+        }
+
+        if (previousTab != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxHeight()
+                    .width(34.dp)
+                    .zIndex(7f)
+                    .pointerInput(selectedTab) {
+                        var totalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                if (totalDrag > swipeThreshold) {
+                                    onSelect(previousTab)
+                                }
+                                totalDrag = 0f
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                totalDrag += dragAmount
+                            }
+                        )
+                    }
+            )
+        }
+
+        if (nextTab != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(34.dp)
+                    .zIndex(7f)
+                    .pointerInput(selectedTab) {
+                        var totalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                if (totalDrag < -swipeThreshold) {
+                                    onSelect(nextTab)
+                                }
+                                totalDrag = 0f
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                totalDrag += dragAmount
+                            }
+                        )
+                    }
+            )
         }
     }
 }
@@ -302,24 +476,10 @@ private fun ScheduleGridTab(
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        AppTabHeader(
+            title = "Rozvrh",
+            subtitle = "Ak. rok $academicLabel"
         ) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-            ) {
-                Text(
-                    text = academicLabel,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -342,30 +502,12 @@ private fun ScheduleGridTab(
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        Text(
-            text = "Rozvrh",
-            fontSize = 34.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.onSurface
+        HeaderPill(
+            text = "Aktualni tyden: ${currentWeekParity.label}",
+            accentColor = MaterialTheme.colorScheme.primary
         )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f))
-        ) {
-            Text(
-                text = "Aktualni tyden: ${currentWeekParity.label}",
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 12.sp
-            )
-        }
 
         Spacer(modifier = Modifier.height(14.dp))
         if (teachingSlots.isEmpty()) {
@@ -1482,21 +1624,12 @@ private fun StudyInfoTab(
             .verticalScroll(scrollState)
             .padding(16.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
+        AppTabHeader(
+            title = "Studium",
+            subtitle = "Osobni, matricni a prijimaci udaje"
         ) {
-            Text(
-                text = "Studium",
-                fontSize = 42.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
             Button(
                 onClick = onRefreshFromEdison,
-                modifier = Modifier.padding(top = 8.dp)
             ) {
                 Text("Nacist z Edisonu")
             }
@@ -1823,21 +1956,12 @@ private fun ResultsTab(
             .verticalScroll(scrollState)
             .padding(16.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
+        AppTabHeader(
+            title = "Vysledky",
+            subtitle = currentResults?.academicYear?.ifBlank { "Prubezne body a znamky" } ?: "Prubezne body a znamky"
         ) {
-            Text(
-                text = "V\u00fdsledky",
-                fontSize = 42.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
             Button(
                 onClick = onRefreshFromEdison,
-                modifier = Modifier.padding(top = 8.dp)
             ) {
                 Text("Na\u010d\u00edst z Edisonu")
             }
@@ -2326,11 +2450,9 @@ private fun PlaceholderTab(
             .statusBarsPadding()
             .padding(16.dp)
     ) {
-        Text(
-            text = title,
-            fontSize = 42.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.onSurface
+        AppTabHeader(
+            title = title,
+            subtitle = "Prehled a rychle info"
         )
 
         Spacer(modifier = Modifier.height(14.dp))
