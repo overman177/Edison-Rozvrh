@@ -360,6 +360,7 @@ private fun TabEdgeSwipeOverlay(
     val previousTab = HomeTabs.getOrNull(selectedIndex - 1)
     val nextTab = HomeTabs.getOrNull(selectedIndex + 1)
     val swipeThreshold = 72f
+    val edgeSwipeWidth = if (selectedTab == HomeTab.SCHEDULE) 56.dp else 84.dp
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (previousTab != null) {
@@ -367,7 +368,7 @@ private fun TabEdgeSwipeOverlay(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxHeight()
-                    .width(if (selectedTab == HomeTab.SCHEDULE) 34.dp else 46.dp)
+                    .width(edgeSwipeWidth)
                     .zIndex(7f)
                     .pointerInput(selectedTab) {
                         var totalDrag = 0f
@@ -392,7 +393,7 @@ private fun TabEdgeSwipeOverlay(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
-                    .width(if (selectedTab == HomeTab.SCHEDULE) 34.dp else 46.dp)
+                    .width(edgeSwipeWidth)
                     .zIndex(7f)
                     .pointerInput(selectedTab) {
                         var totalDrag = 0f
