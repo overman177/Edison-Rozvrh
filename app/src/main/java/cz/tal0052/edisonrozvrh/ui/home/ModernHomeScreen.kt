@@ -18,6 +18,12 @@ import cz.tal0052.edisonrozvrh.ui.design.LessonTypePalette
 import cz.tal0052.edisonrozvrh.ui.design.UiColorConfig
 
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -140,13 +146,20 @@ fun ScheduleScreen(
     onRefreshFromEdison: () -> Unit
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(HomeTab.SCHEDULE) }
+    var transitionDirection by rememberSaveable { mutableStateOf(0) }
+
+    fun selectTab(targetTab: HomeTab) {
+        if (targetTab == selectedTab) return
+        transitionDirection = HomeTabs.indexOf(targetTab).compareTo(HomeTabs.indexOf(selectedTab))
+        selectedTab = targetTab
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             EdisonBottomNavigation(
                 selectedTab = selectedTab,
-                onSelect = { selectedTab = it }
+                onSelect = ::selectTab
             )
         }) { innerPadding ->
         Box(
@@ -155,28 +168,43 @@ fun ScheduleScreen(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            when (selectedTab) {
-                HomeTab.SCHEDULE -> ScheduleGridTab(
-                    lessons = lessons,
-                    onAddCustomLesson = onAddCustomLesson,
-                    onDeleteCustomLesson = onDeleteCustomLesson
-                )
-                HomeTab.UNIVERSITY -> StudyInfoTab(
-                    studyInfo = studyInfo,
-                    onRefreshFromEdison = onRefreshFromEdison
-                )
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    if (transitionDirection >= 0) {
+                        slideInHorizontally { fullWidth -> fullWidth / 3 } + fadeIn() togetherWith
+                            slideOutHorizontally { fullWidth -> -fullWidth / 4 } + fadeOut()
+                    } else {
+                        slideInHorizontally { fullWidth -> -fullWidth / 3 } + fadeIn() togetherWith
+                            slideOutHorizontally { fullWidth -> fullWidth / 4 } + fadeOut()
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+                label = "home-tab-transition"
+            ) { tab ->
+                when (tab) {
+                    HomeTab.SCHEDULE -> ScheduleGridTab(
+                        lessons = lessons,
+                        onAddCustomLesson = onAddCustomLesson,
+                        onDeleteCustomLesson = onDeleteCustomLesson
+                    )
+                    HomeTab.UNIVERSITY -> StudyInfoTab(
+                        studyInfo = studyInfo,
+                        onRefreshFromEdison = onRefreshFromEdison
+                    )
 
-                HomeTab.RESULTS -> ResultsTab(
-                    currentResults = currentResults,
-                    onRefreshFromEdison = onRefreshFromEdison
-                )
+                    HomeTab.RESULTS -> ResultsTab(
+                        currentResults = currentResults,
+                        onRefreshFromEdison = onRefreshFromEdison
+                    )
 
-                HomeTab.EXAMS -> PlaceholderTab(
-                    title = "Term\u00edny",
-                    subtitle = "Work in progress, dod\u011bl\u00e1m a\u017e budou zkou\u0161ky dostupn\u00e9."
-                )
+                    HomeTab.EXAMS -> PlaceholderTab(
+                        title = "Term\u00edny",
+                        subtitle = "Work in progress, dod\u011bl\u00e1m a\u017e budou zkou\u0161ky dostupn\u00e9."
+                    )
 
-                HomeTab.EMAIL -> EmailVerificationTab()
+                    HomeTab.EMAIL -> EmailVerificationTab()
+                }
             }
 
             Image(
@@ -193,7 +221,7 @@ fun ScheduleScreen(
 
             TabEdgeSwipeOverlay(
                 selectedTab = selectedTab,
-                onSelect = { selectedTab = it }
+                onSelect = ::selectTab
             )
         }
     }
@@ -334,37 +362,12 @@ private fun TabEdgeSwipeOverlay(
     val swipeThreshold = 72f
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (selectedTab != HomeTab.SCHEDULE) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .zIndex(7f)
-                    .pointerInput(selectedTab) {
-                        var totalDrag = 0f
-                        detectHorizontalDragGestures(
-                            onDragEnd = {
-                                when {
-                                    totalDrag > swipeThreshold && previousTab != null -> onSelect(previousTab)
-                                    totalDrag < -swipeThreshold && nextTab != null -> onSelect(nextTab)
-                                }
-                                totalDrag = 0f
-                            },
-                            onHorizontalDrag = { change, dragAmount ->
-                                change.consume()
-                                totalDrag += dragAmount
-                            }
-                        )
-                    }
-            )
-            return@Box
-        }
-
         if (previousTab != null) {
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxHeight()
-                    .width(34.dp)
+                    .width(if (selectedTab == HomeTab.SCHEDULE) 34.dp else 46.dp)
                     .zIndex(7f)
                     .pointerInput(selectedTab) {
                         var totalDrag = 0f
@@ -389,7 +392,7 @@ private fun TabEdgeSwipeOverlay(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
-                    .width(34.dp)
+                    .width(if (selectedTab == HomeTab.SCHEDULE) 34.dp else 46.dp)
                     .zIndex(7f)
                     .pointerInput(selectedTab) {
                         var totalDrag = 0f
